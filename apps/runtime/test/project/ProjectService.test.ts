@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -28,7 +28,7 @@ describe("ProjectService", () => {
     const root = await mkdtemp(join(tmpdir(), "idle-project-"));
     temporaryPaths.push(root);
     const filePath = join(root, "README.md");
-    await Bun.write(filePath, "test");
+    await writeFile(filePath, "test");
 
     const service = new ProjectService();
 
