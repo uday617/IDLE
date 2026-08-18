@@ -1,4 +1,8 @@
-import { ProjectController, type ProjectCommand } from '../project/ProjectController.js';
+import {
+  ProjectController,
+  type ProjectCommand,
+  type ProjectCommandResult,
+} from '../project/ProjectController.js';
 import { ProjectService } from '../project/ProjectService.js';
 
 export interface RuntimeHealth {
@@ -10,7 +14,7 @@ export interface RuntimeServer {
   start(): Promise<void>;
   stop(): Promise<void>;
   health(): RuntimeHealth;
-  handleProject(command: ProjectCommand): Promise<unknown>;
+  handleProject(command: ProjectCommand): Promise<ProjectCommandResult>;
 }
 
 export function createRuntimeServer(version: string): RuntimeServer {
