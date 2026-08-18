@@ -16,13 +16,6 @@ export interface AgentEvent<T = unknown> {
   payload: T;
 }
 
-export interface ToolRequest<T = unknown> {
-  requestId: string;
-  agentId: AgentId;
-  toolName: string;
-  arguments: T;
-}
-
 export interface PermissionDecision {
   level: PermissionLevel;
   allowed: boolean;
