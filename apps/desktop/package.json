@@ -3,13 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "dist/main.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json --outDir dist",
+    "dev": "electron-vite dev",
+    "build": "tsc -p tsconfig.json --noEmit && electron-vite build",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
   "devDependencies": {
+    "@types/react": "^19.1.9",
+    "@types/react-dom": "^19.1.7",
+    "electron": "^37.3.1",
+    "electron-vite": "^4.0.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }
