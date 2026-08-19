@@ -1,14 +1,19 @@
 import type { Project, ProjectService } from './ProjectService.js';
+import type { FileEntry, FileService } from './FileService.js';
 
 export type ProjectCommand =
   | { type: 'project.open'; path: string }
   | { type: 'project.get'; projectId: string }
-  | { type: 'project.close'; projectId: string };
+  | { type: 'project.close'; projectId: string }
+  | { type: 'file.list'; projectId: string; path: string };
 
-export type ProjectCommandResult = Project | null | { ok: true };
+export type ProjectCommandResult = Project | FileEntry[] | null | { ok: true };
 
 export class ProjectController {
-  constructor(private readonly projects: ProjectService) {}
+  constructor(
+    private readonly projects: ProjectService,
+    private readonly files: FileService,
+  ) {}
 
   async handle(command: ProjectCommand): Promise<ProjectCommandResult> {
     switch (command.type) {
@@ -19,6 +24,8 @@ export class ProjectController {
       case 'project.close':
         await this.projects.close(command.projectId);
         return { ok: true };
+      case 'file.list':
+        return this.files.list(command.projectId, command.path);
     }
   }
 }
