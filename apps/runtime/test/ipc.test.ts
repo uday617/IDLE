@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -14,59 +14,54 @@ describe('runtime server', () => {
   it('reports health after startup', async () => {
     const server = createRuntimeServer('0.1.0');
     await server.start();
-
     expect(server.health()).toEqual({ status: 'ok', version: '0.1.0' });
-
     await server.stop();
   });
 
   it('handles project commands through the runtime boundary', async () => {
     const root = await mkdtemp(join(tmpdir(), 'idle-runtime-project-'));
     temporaryPaths.push(root);
+    const server = createRuntimeServer('0.1.0');
+    await server.start();
+    const project = await server.handleProject({ type: 'project.open', path: root });
+    expect(project).toMatchObject({ path: root });
+    expect(await server.handleProject({ type: 'project.close', projectId: project.id })).toEqual({ ok: true });
+    await server.stop();
+  });
+
+  it('previews a changeset without writing through the runtime boundary', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'idle-runtime-project-'));
+    temporaryPaths.push(root);
+    await import('node:fs/promises').then(({ writeFile }) => writeFile(join(root, 'hello.txt'), 'hello\n'));
 
     const server = createRuntimeServer('0.1.0');
     await server.start();
-
     const project = await server.handleProject({ type: 'project.open', path: root });
+    const result = await server.handleProject({
+      type: 'changeset.preview',
+      projectId: project.id,
+      changeSet: {
+        id: 'ipc-preview-1', description: 'preview update',
+        changes: [{ operation: 'modify', path: 'hello.txt', baseContent: 'hello\n', hunks: [{ oldStart: 1, oldLines: ['hello'], newLines: ['hello world'] }] }],
+      },
+    });
 
-    expect(project).toMatchObject({ path: root });
-    expect(await server.handleProject({ type: 'project.close', projectId: project.id })).toEqual({ ok: true });
-
+    expect(result).toEqual({ id: 'ipc-preview-1', files: [{ path: 'hello.txt', operation: 'modify', oldContent: 'hello\n', newContent: 'hello world\n', additions: 0, deletions: 0 }] });
+    await expect(readFile(join(root, 'hello.txt'), 'utf8')).resolves.toBe('hello\n');
     await server.stop();
   });
 
   it('applies a changeset through the runtime boundary', async () => {
     const root = await mkdtemp(join(tmpdir(), 'idle-runtime-project-'));
     temporaryPaths.push(root);
-
     const server = createRuntimeServer('0.1.0');
     await server.start();
-
     const project = await server.handleProject({ type: 'project.open', path: root });
-    const result = await server.handleProject({
-      type: 'changeset.apply',
-      projectId: project.id,
-      changeSet: {
-        id: 'ipc-change-1',
-        description: 'create a file through IPC',
-        changes: [
-          {
-            operation: 'create',
-            path: 'hello.txt',
-            baseContent: null,
-            content: 'hello from ipc',
-          },
-        ],
-      },
-    });
-
+    const result = await server.handleProject({ type: 'changeset.apply', projectId: project.id, changeSet: {
+      id: 'ipc-change-1', description: 'create a file through IPC', changes: [{ operation: 'create', path: 'hello.txt', baseContent: null, content: 'hello from ipc' }],
+    }});
     expect(result).toEqual({ id: 'ipc-change-1', changedFiles: ['hello.txt'] });
-    await expect(server.handleProject({
-      type: 'file.read',
-      projectId: project.id,
-      path: 'hello.txt',
-    })).resolves.toEqual({ path: 'hello.txt', content: 'hello from ipc' });
-
+    await expect(server.handleProject({ type: 'file.read', projectId: project.id, path: 'hello.txt' })).resolves.toEqual({ path: 'hello.txt', content: 'hello from ipc' });
     await server.stop();
   });
 });
