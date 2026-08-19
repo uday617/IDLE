@@ -15,8 +15,9 @@ interface RuntimeRequest {
 
 const lines = createInterface({ input: process.stdin });
 lines.on('line', async (line) => {
+  let request: RuntimeRequest | null = null;
   try {
-    const request = JSON.parse(line) as RuntimeRequest;
+    request = JSON.parse(line) as RuntimeRequest;
     let result: unknown;
 
     if (request.type === 'health') {
@@ -34,7 +35,7 @@ lines.on('line', async (line) => {
     process.stdout.write(`${JSON.stringify({ id: request.id, result })}\n`);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown runtime error';
-    process.stdout.write(`${JSON.stringify({ id: -1, error: message })}\n`);
+    process.stdout.write(`${JSON.stringify({ id: request?.id ?? -1, error: message })}\n`);
   }
 });
 
