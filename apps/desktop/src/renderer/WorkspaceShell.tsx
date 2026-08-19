@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FileExplorer } from './FileExplorer.js';
 import { getWorkspacePanelTitle } from './workspaceModel.js';
 import {
   beginProjectOpen,
@@ -34,11 +35,7 @@ export function WorkspaceShell() {
       <section className="workspace-grid">
         <aside className="panel explorer">
           <h2>{getWorkspacePanelTitle('explorer')}</h2>
-          {state.project ? (
-            <p title={state.project.path}>{state.project.path}</p>
-          ) : (
-            <p>No project opened.</p>
-          )}
+          <FileExplorer projectId={state.project?.id ?? null} />
           {state.error ? <p role="alert">{state.error}</p> : null}
         </aside>
         <section className="panel editor">
