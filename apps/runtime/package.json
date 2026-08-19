@@ -9,6 +9,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "@idle/contracts": "workspace:*",
+    "@idle/core": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^22.15.21",
     "typescript": "^5.9.2",
