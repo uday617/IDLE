@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { describe, expect, expectTypeOf, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { ChangeSet } from '@idle/contracts';
 import { ChangeSetService } from '../../src/project/ChangeSetService.js';
 import { FileService } from '../../src/project/FileService.js';
