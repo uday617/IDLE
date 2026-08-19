@@ -37,19 +37,16 @@ function isValidProjectPath(path: unknown): path is string {
   if (typeof path !== 'string' || path.length === 0) return false;
   if (path.startsWith('/') || path.includes('\\') || path.includes('\0')) return false;
   if (WINDOWS_DRIVE_PREFIX.test(path)) return false;
-
   const segments = path.split('/');
   return segments.every((segment) => segment.length > 0 && segment !== '.' && segment !== '..');
 }
 
 function splitLines(content: string): SplitLinesResult {
-  const newline: '\n' | '\r\n' = content.includes('\r\n') ? '\r\n' : '\n';
-  const trailingNewline = content.endsWith(newline);
-  let lines = content.split(/\r\n|\n/);
-
-  if (trailingNewline) lines = lines.slice(0, -1);
-  if (content.length === 0) lines = [];
-
+  const newline = content.includes('\r\n') ? '\r\n' : '\n';
+  const trailingNewline = content.endsWith('\n');
+  const normalized = content.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+  if (trailingNewline) lines.pop();
   return { lines, newline, trailingNewline };
 }
 
@@ -58,12 +55,7 @@ function joinLines(lines: string[], newline: '\n' | '\r\n', trailingNewline: boo
   return trailingNewline ? `${content}${newline}` : content;
 }
 
-function validateHunks(
-  path: string,
-  content: string,
-  hunks: unknown,
-  errors: ChangeSetValidationError[],
-): void {
+function validateHunks(path: string, content: string, hunks: unknown[], errors: ChangeSetValidationError[]): void {
   if (!Array.isArray(hunks)) {
     errors.push({
       path,
@@ -108,7 +100,9 @@ function validateHunks(
       continue;
     }
 
-    if (previousStart > 0 && hunk.oldStart < previousEndExclusive) {
+    const startIndex = hunk.oldStart - 1;
+    const endIndex = startIndex + hunk.oldLines.length;
+    if (previousStart > 0 && startIndex < previousEndExclusive && !(hunk.oldStart === previousStart && previousOldLineCount === 0)) {
       errors.push({
         path,
         code: 'INVALID_HUNK',
@@ -117,8 +111,6 @@ function validateHunks(
       continue;
     }
 
-    const startIndex = hunk.oldStart - 1;
-    const endIndex = startIndex + hunk.oldLines.length;
     if (endIndex > lines.length) {
       errors.push({
         path,
@@ -145,139 +137,72 @@ function validateHunks(
 
 function isTextHunk(value: unknown): value is TextHunk {
   if (typeof value !== 'object' || value === null) return false;
-
   const hunk = value as Record<string, unknown>;
-  return (
-    Number.isInteger(hunk.oldStart) &&
-    Array.isArray(hunk.oldLines) &&
-    Array.isArray(hunk.newLines) &&
-    hunk.oldLines.every((line) => typeof line === 'string') &&
-    hunk.newLines.every((line) => typeof line === 'string')
-  );
+  return Number.isInteger(hunk.oldStart) && Array.isArray(hunk.oldLines) && Array.isArray(hunk.newLines) && hunk.oldLines.every((line) => typeof line === 'string') && hunk.newLines.every((line) => typeof line === 'string');
 }
 
 function sameLines(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((line, index) => line === right[index]);
 }
 
-function validateChange(
-  change: FileChange,
-  files: ReadonlyMap<string, ChangeFileState>,
-  errors: ChangeSetValidationError[],
-): void {
+function validateChange(change: FileChange, files: ReadonlyMap<string, ChangeFileState>, errors: ChangeSetValidationError[]): void {
   if (!isValidProjectPath(change.path)) {
-    errors.push({
-      path: typeof change.path === 'string' ? change.path : '<invalid>',
-      code: 'INVALID_PATH',
-      message: 'Path must be a non-empty project-relative POSIX path without traversal or backslashes.',
-    });
+    errors.push({ path: typeof change.path === 'string' ? change.path : '<invalid>', code: 'INVALID_PATH', message: 'Path must be a non-empty project-relative POSIX path without traversal or backslashes.' });
     return;
   }
 
   const state = files.get(change.path);
-
   switch (change.operation) {
     case 'modify':
       if (!state?.exists || state.content !== change.baseContent) {
-        errors.push({
-          path: change.path,
-          code: 'BASE_MISMATCH',
-          message: 'The workspace content does not exactly match the planned base content.',
-        });
+        errors.push({ path: change.path, code: 'BASE_MISMATCH', message: 'The workspace content does not exactly match the planned base content.' });
         return;
       }
       validateHunks(change.path, state.content, change.hunks, errors);
       return;
-
     case 'create':
-      if (state?.exists) {
-        errors.push({
-          path: change.path,
-          code: 'BASE_MISMATCH',
-          message: 'Create target already exists in the workspace.',
-        });
-      }
-      if (typeof change.content !== 'string') {
-        errors.push({
-          path: change.path,
-          code: 'MISSING_CONTENT',
-          message: 'Create changes must contain string content.',
-        });
-      }
+      if (state?.exists) errors.push({ path: change.path, code: 'BASE_MISMATCH', message: 'Create target already exists in the workspace.' });
+      if (typeof change.content !== 'string') errors.push({ path: change.path, code: 'MISSING_CONTENT', message: 'Create changes must contain string content.' });
       return;
-
     case 'delete':
-      if (!state?.exists || state.content !== change.baseContent) {
-        errors.push({
-          path: change.path,
-          code: 'BASE_MISMATCH',
-          message: 'The workspace content does not exactly match the planned delete base content.',
-        });
-      }
+      if (!state?.exists || state.content !== change.baseContent) errors.push({ path: change.path, code: 'BASE_MISMATCH', message: 'The workspace content does not exactly match the planned delete base content.' });
       return;
   }
 }
 
-export function validateChangeSet(
-  changeSet: ChangeSet,
-  files: ReadonlyMap<string, ChangeFileState>,
-): ChangeSetValidationResult {
+export function validateChangeSet(changeSet: ChangeSet, files: ReadonlyMap<string, ChangeFileState>): { valid: boolean; errors: ChangeSetValidationError[] } {
   const errors: ChangeSetValidationError[] = [];
-  const seenPaths = new Set<string>();
-
+  const seen = new Set<string>();
   for (const change of changeSet.changes) {
-    if (seenPaths.has(change.path)) {
-      errors.push({
-        path: change.path,
-        code: 'DUPLICATE_PATH',
-        message: 'A path may occur only once in a Change Set.',
-      });
-    } else {
-      seenPaths.add(change.path);
-    }
-
+    if (typeof change.path === 'string' && seen.has(change.path)) errors.push({ path: change.path, code: 'DUPLICATE_PATH', message: 'Each path may only appear once in a change set.' });
+    if (typeof change.path === 'string') seen.add(change.path);
     validateChange(change, files, errors);
   }
-
   return { valid: errors.length === 0, errors };
 }
 
-function applyModify(change: Extract<FileChange, { operation: 'modify' }>): string {
-  const { lines, newline, trailingNewline } = splitLines(change.baseContent);
-  const result = [...lines];
-
-  for (let index = change.hunks.length - 1; index >= 0; index -= 1) {
-    const hunk = change.hunks[index];
-    if (!hunk) continue;
-    const startIndex = hunk.oldStart - 1;
-    result.splice(startIndex, hunk.oldLines.length, ...hunk.newLines);
+function applyModify(content: string, hunks: TextHunk[]): string {
+  const { lines, newline, trailingNewline } = splitLines(content);
+  let result = [...lines];
+  let offset = 0;
+  for (const hunk of hunks) {
+    const start = hunk.oldStart - 1 + offset;
+    result.splice(start, hunk.oldLines.length, ...hunk.newLines);
+    offset += hunk.newLines.length - hunk.oldLines.length;
   }
-
   return joinLines(result, newline, trailingNewline);
 }
 
-export function applyChangeSet(
-  changeSet: ChangeSet,
-  files: ReadonlyMap<string, ChangeFileState>,
-): ApplyChangeSetResult {
+export function applyChangeSet(changeSet: ChangeSet, files: ReadonlyMap<string, ChangeFileState>): ApplyChangeSetResult {
   const validation = validateChangeSet(changeSet, files);
   if (!validation.valid) throw new ChangeSetApplyError(validation.errors);
 
   return {
-    changes: changeSet.changes.map((change): AppliedChange => {
-      switch (change.operation) {
-        case 'modify':
-          return { path: change.path, operation: change.operation, content: applyModify(change) };
-        case 'create':
-          return { path: change.path, operation: change.operation, content: change.content };
-        case 'delete':
-          return { path: change.path, operation: change.operation, content: null };
-      }
+    changes: changeSet.changes.map((change) => {
+      if (change.operation === 'create') return { path: change.path, operation: change.operation, content: change.content };
+      if (change.operation === 'delete') return { path: change.path, operation: change.operation, content: null };
+      const state = files.get(change.path)!;
+      return { path: change.path, operation: change.operation, content: applyModify(state.content, change.hunks) };
     }),
   };
 }
-
-type ChangeSetValidationResult = {
-  valid: boolean;
-  errors: ChangeSetValidationError[];
-};
