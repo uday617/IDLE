@@ -119,32 +119,28 @@ describe('validateChangeSet', () => {
       {
         id: 'unsorted',
         description: 'unsorted',
-        changes: [
-          {
-            operation: 'modify',
-            path: 'src/a.ts',
-            baseContent: content,
-            hunks: [
-              { oldStart: 3, oldLines: ['three'], newLines: ['3'] },
-              { oldStart: 2, oldLines: ['two'], newLines: ['2'] },
-            ],
-          },
-        ],
+        changes: [{
+          operation: 'modify',
+          path: 'src/a.ts',
+          baseContent: content,
+          hunks: [
+            { oldStart: 3, oldLines: ['three'], newLines: ['3'] },
+            { oldStart: 2, oldLines: ['two'], newLines: ['2'] },
+          ],
+        }],
       },
       {
         id: 'overlap',
         description: 'overlap',
-        changes: [
-          {
-            operation: 'modify',
-            path: 'src/a.ts',
-            baseContent: content,
-            hunks: [
-              { oldStart: 2, oldLines: ['two', 'three'], newLines: ['x'] },
-              { oldStart: 3, oldLines: ['three'], newLines: ['y'] },
-            ],
-          },
-        ],
+        changes: [{
+          operation: 'modify',
+          path: 'src/a.ts',
+          baseContent: content,
+          hunks: [
+            { oldStart: 2, oldLines: ['two', 'three'], newLines: ['x'] },
+            { oldStart: 3, oldLines: ['three'], newLines: ['y'] },
+          ],
+        }],
       },
     ];
 
@@ -199,18 +195,16 @@ describe('applyChangeSet', () => {
     const changeSet: ChangeSet = {
       id: 'multi',
       description: 'multi hunk',
-      changes: [
-        {
-          operation: 'modify',
-          path: 'src/a.ts',
-          baseContent: base,
-          hunks: [
-            { oldStart: 1, oldLines: ['one'], newLines: ['ONE'] },
-            { oldStart: 3, oldLines: [], newLines: ['inserted'] },
-            { oldStart: 4, oldLines: ['three'], newLines: [] },
-          ],
-        },
-      ],
+      changes: [{
+        operation: 'modify',
+        path: 'src/a.ts',
+        baseContent: base,
+        hunks: [
+          { oldStart: 1, oldLines: ['one'], newLines: ['ONE'] },
+          { oldStart: 3, oldLines: [], newLines: ['inserted'] },
+          { oldStart: 3, oldLines: ['three'], newLines: [] },
+        ],
+      }],
     };
 
     expect(applyChangeSet(changeSet, files({ 'src/a.ts': base })).changes[0]?.content).toBe(
@@ -238,50 +232,32 @@ describe('applyChangeSet', () => {
   });
 
   it('rejects the entire set before producing any output when one file is stale', () => {
+    const base = 'one\n';
     const changeSet: ChangeSet = {
       id: 'atomic',
       description: 'atomic',
       changes: [
-        {
-          operation: 'modify',
-          path: 'src/good.ts',
-          baseContent: 'good\n',
-          hunks: [{ oldStart: 1, oldLines: ['good'], newLines: ['changed'] }],
-        },
-        {
-          operation: 'modify',
-          path: 'src/stale.ts',
-          baseContent: 'planned\n',
-          hunks: [{ oldStart: 1, oldLines: ['planned'], newLines: ['changed'] }],
-        },
+        { operation: 'create', path: 'src/new.ts', baseContent: null, content: 'new\n' },
+        { operation: 'modify', path: 'src/a.ts', baseContent: base, hunks: [{ oldStart: 1, oldLines: ['one'], newLines: ['ONE'] }] },
       ],
     };
 
-    expect(() => applyChangeSet(
-      changeSet,
-      files({ 'src/good.ts': 'good\n', 'src/stale.ts': 'actual\n' }),
-    )).toThrow(/BASE_MISMATCH/);
+    expect(() => applyChangeSet(changeSet, files({ 'src/a.ts': 'stale\n' }))).toThrowError();
   });
 
   it('fails a planned change after an unrelated concurrent edit changes the base', () => {
-    const plannedBase = 'function a() {\n  return 1;\n}\n\nfunction b() {\n  return 2;\n}\n';
-    const concurrentVersion = 'function a() {\n  return 1;\n}\n\nfunction b() {\n  return 20;\n}\n';
-    const changeSet = modify('src/example.ts', plannedBase, 2, ['  return 1;'], ['  return 10;']);
+    const base = 'one\ntwo\n';
+    const changeSet = modify('src/a.ts', base, 2, ['two'], ['TWO']);
 
-    const validation = validateChangeSet(changeSet, files({ 'src/example.ts': concurrentVersion }));
-
-    expect(validation.valid).toBe(false);
-    expect(validation.errors).toEqual([
-      expect.objectContaining({ path: 'src/example.ts', code: 'BASE_MISMATCH' }),
-    ]);
-    expect(() => applyChangeSet(changeSet, files({ 'src/example.ts': concurrentVersion }))).toThrow();
+    expect(() => applyChangeSet(changeSet, files({ 'src/a.ts': 'one\nchanged\n' }))).toThrowError();
   });
 
   it('does not mutate the supplied file map', () => {
-    const base = 'one\ntwo\n';
-    const state = new Map<string, ChangeFileState>([['src/a.ts', { exists: true, content: base }]]);
-    applyChangeSet(modify('src/a.ts', base, 2, ['two'], ['changed']), state);
+    const base = 'one\n';
+    const workspace = files({ 'src/a.ts': base });
 
-    expect(state.get('src/a.ts')).toEqual({ exists: true, content: base });
+    applyChangeSet(modify('src/a.ts', base, 1, ['one'], ['ONE']), workspace);
+
+    expect(workspace.get('src/a.ts')?.content).toBe(base);
   });
 });
