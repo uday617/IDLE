@@ -33,3 +33,17 @@ export interface ChangeSet {
   description: string;
   changes: FileChange[];
 }
+
+export type ChangeSetValidationErrorCode =
+  | 'INVALID_PATH'
+  | 'DUPLICATE_PATH'
+  | 'BASE_MISMATCH'
+  | 'MISSING_CONTENT'
+  | 'INVALID_HUNK'
+  | 'HUNK_MISMATCH';
+
+export interface ChangeSetValidationError {
+  path: string;
+  code: ChangeSetValidationErrorCode;
+  message: string;
+}
