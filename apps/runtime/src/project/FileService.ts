@@ -1,4 +1,4 @@
-import { readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
+import { readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { ProjectService } from './ProjectService.js';
 
@@ -15,6 +15,16 @@ export interface FileContent {
 
 export interface FileWrite {
   path: string;
+  content: string;
+}
+
+export interface FileBatchOperation {
+  path: string;
+  content: string | null;
+}
+
+export interface FileState {
+  exists: boolean;
   content: string;
 }
 
@@ -42,13 +52,24 @@ export class FileService {
   async read(projectId: string, relativePath: string): Promise<FileContent> {
     const project = await this.projects.get(projectId);
     if (!project) throw new Error(`Project not found: ${projectId}`);
-    const root = resolve(project.path);
-    const requested = resolve(root, relativePath);
-    const fromRoot = relative(root, requested);
-    this.assertInsideProject(fromRoot);
+    const requested = this.resolveFilePath(project.path, relativePath);
     const info = await stat(requested);
     if (!info.isFile()) throw new Error(`Path is not a file: ${relativePath}`);
-    return { path: fromRoot, content: await readFile(requested, 'utf8') };
+    return { path: relative(resolve(project.path), requested), content: await readFile(requested, 'utf8') };
+  }
+
+  async readState(projectId: string, relativePath: string): Promise<FileState> {
+    const project = await this.projects.get(projectId);
+    if (!project) throw new Error(`Project not found: ${projectId}`);
+    const requested = this.resolveFilePath(project.path, relativePath);
+    try {
+      const info = await stat(requested);
+      if (!info.isFile()) throw new Error(`Path is not a file: ${relativePath}`);
+      return { exists: true, content: await readFile(requested, 'utf8') };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { exists: false, content: '' };
+      throw error;
+    }
   }
 
   async write(projectId: string, relativePath: string, content: string): Promise<void> {
@@ -56,28 +77,61 @@ export class FileService {
   }
 
   async writeBatch(projectId: string, writes: FileWrite[]): Promise<void> {
+    await this.applyBatch(projectId, writes.map((write) => ({ path: write.path, content: write.content })));
+  }
+
+  async applyBatch(projectId: string, operations: FileBatchOperation[]): Promise<void> {
     const project = await this.projects.get(projectId);
     if (!project) throw new Error(`Project not found: ${projectId}`);
+
     const root = resolve(project.path);
+    const seen = new Set<string>();
+    const snapshots = new Map<string, FileState>();
     const staged: Array<{ temporary: string; requested: string }> = [];
 
-    for (const write of writes) {
-      const requested = resolve(root, write.path);
+    for (const operation of operations) {
+      const requested = this.resolveFilePath(root, operation.path);
       const fromRoot = relative(root, requested);
-      this.assertInsideProject(fromRoot);
-      const info = await stat(requested).catch(() => null);
-      if (info && !info.isFile()) throw new Error(`Path is not a file: ${write.path}`);
-      const temporary = `${requested}.idle-tmp-${process.pid}-${staged.length}`;
-      await writeFile(temporary, write.content, 'utf8');
-      staged.push({ temporary, requested });
+      if (seen.has(fromRoot)) throw new Error(`Duplicate file operation: ${operation.path}`);
+      seen.add(fromRoot);
+
+      const state = await this.readState(projectId, fromRoot);
+      snapshots.set(fromRoot, state);
+      if (operation.content !== null) {
+        const temporary = `${requested}.idle-tmp-${process.pid}-${staged.length}`;
+        await writeFile(temporary, operation.content, 'utf8');
+        staged.push({ temporary, requested });
+      }
     }
 
     try {
-      for (const item of staged) await rename(item.temporary, item.requested);
+      for (const operation of operations) {
+        const requested = this.resolveFilePath(root, operation.path);
+        if (operation.content === null) {
+          await unlink(requested);
+        } else {
+          const item = staged.shift();
+          if (!item) throw new Error(`Missing staged file for ${operation.path}`);
+          await rename(item.temporary, item.requested);
+        }
+      }
     } catch (error) {
-      for (const item of staged) await rename(item.temporary, item.requested).catch(() => undefined);
+      for (const item of staged) await unlink(item.temporary).catch(() => undefined);
+      for (const [path, state] of snapshots) {
+        const requested = this.resolveFilePath(root, path);
+        if (state.exists) await writeFile(requested, state.content, 'utf8').catch(() => undefined);
+        else await unlink(requested).catch(() => undefined);
+      }
       throw error;
     }
+  }
+
+  private resolveFilePath(rootPath: string, relativePath: string): string {
+    const root = resolve(rootPath);
+    const requested = resolve(root, relativePath);
+    const fromRoot = relative(root, requested);
+    this.assertInsideProject(fromRoot);
+    return requested;
   }
 
   private assertInsideProject(fromRoot: string): void {
