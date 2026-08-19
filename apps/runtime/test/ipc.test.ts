@@ -34,4 +34,39 @@ describe('runtime server', () => {
 
     await server.stop();
   });
+
+  it('applies a changeset through the runtime boundary', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'idle-runtime-project-'));
+    temporaryPaths.push(root);
+
+    const server = createRuntimeServer('0.1.0');
+    await server.start();
+
+    const project = await server.handleProject({ type: 'project.open', path: root });
+    const result = await server.handleProject({
+      type: 'changeset.apply',
+      projectId: project.id,
+      changeSet: {
+        id: 'ipc-change-1',
+        description: 'create a file through IPC',
+        changes: [
+          {
+            operation: 'create',
+            path: 'hello.txt',
+            baseContent: null,
+            content: 'hello from ipc',
+          },
+        ],
+      },
+    });
+
+    expect(result).toEqual({ id: 'ipc-change-1', changedFiles: ['hello.txt'] });
+    await expect(server.handleProject({
+      type: 'file.read',
+      projectId: project.id,
+      path: 'hello.txt',
+    })).resolves.toEqual({ path: 'hello.txt', content: 'hello from ipc' });
+
+    await server.stop();
+  });
 });
