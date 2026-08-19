@@ -16,8 +16,8 @@ describe('FileService', () => {
     const files = new FileService(projects);
 
     await expect(files.list(project.id, '.')).resolves.toEqual([
-      { name: 'README.md', path: 'README.md', kind: 'file' },
       { name: 'src', path: 'src', kind: 'directory' },
+      { name: 'README.md', path: 'README.md', kind: 'file' },
     ]);
   });
 
