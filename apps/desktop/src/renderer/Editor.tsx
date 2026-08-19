@@ -18,9 +18,11 @@ interface EditorProps {
 
 export function Editor({ projectId, filePath }: EditorProps) {
   const [state, setState] = useState(initialEditorState);
+  const [showDiff, setShowDiff] = useState(false);
 
   useEffect(() => {
     let active = true;
+    setShowDiff(false);
     if (!projectId || !filePath) {
       setState(initialEditorState);
       return () => {
@@ -53,6 +55,7 @@ export function Editor({ projectId, filePath }: EditorProps) {
       const result = await window.idle.project.writeFile(projectId, state.path, state.content);
       if (!result) throw new Error('Unable to save file');
       setState((current) => completeEditorSave(current));
+      setShowDiff(false);
     } catch (cause) {
       setState((current) => failEditorSave(current, cause instanceof Error ? cause.message : 'Unable to save file'));
     }
@@ -76,23 +79,38 @@ export function Editor({ projectId, filePath }: EditorProps) {
     setState((current) => editEditorContent(current, value ?? ''));
   };
   const MonacoEditor = MonacoReact.Editor;
+  const MonacoDiffEditor = MonacoReact.DiffEditor;
 
   return (
     <div className="editor-view" aria-label={`Editor for ${filePath}`}>
       <div className="editor-toolbar">
         <span>{state.path}{state.dirty ? ' •' : ''}</span>
+        <button type="button" onClick={() => setShowDiff((current) => !current)} disabled={!state.dirty}>
+          {showDiff ? 'Editor' : 'Diff'}
+        </button>
         <button type="button" onClick={() => void save()} disabled={!state.dirty || state.saving}>
           {state.saving ? 'Saving…' : 'Save'}
         </button>
       </div>
-      <MonacoEditor
-        height="calc(100% - 36px)"
-        language={getEditorLanguage(filePath)}
-        value={state.content}
-        onChange={handleChange}
-        theme="vs-dark"
-        options={{ minimap: { enabled: false }, automaticLayout: true }}
-      />
+      {showDiff ? (
+        <MonacoDiffEditor
+          height="calc(100% - 36px)"
+          language={getEditorLanguage(filePath)}
+          original={state.originalContent}
+          modified={state.content}
+          theme="vs-dark"
+          options={{ minimap: { enabled: false }, automaticLayout: true, readOnly: true }}
+        />
+      ) : (
+        <MonacoEditor
+          height="calc(100% - 36px)"
+          language={getEditorLanguage(filePath)}
+          value={state.content}
+          onChange={handleChange}
+          theme="vs-dark"
+          options={{ minimap: { enabled: false }, automaticLayout: true }}
+        />
+      )}
     </div>
   );
 }
