@@ -35,6 +35,31 @@ describe('FileService', () => {
     ]);
   });
 
+  it('reads UTF-8 file contents without exposing filesystem paths', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'idle-file-service-'));
+    await writeFile(join(root, 'README.md'), '# IDLE\n\nhello');
+
+    const projects = new ProjectService();
+    const project = await projects.open(root);
+    const files = new FileService(projects);
+
+    await expect(files.read(project.id, 'README.md')).resolves.toEqual({
+      path: 'README.md',
+      content: '# IDLE\n\nhello',
+    });
+  });
+
+  it('rejects reading directories and paths outside the project', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'idle-file-service-'));
+    await mkdir(join(root, 'src'));
+    const projects = new ProjectService();
+    const project = await projects.open(root);
+    const files = new FileService(projects);
+
+    await expect(files.read(project.id, 'src')).rejects.toThrow('not a file');
+    await expect(files.read(project.id, '../README.md')).rejects.toThrow('outside the project');
+  });
+
   it('rejects paths outside the opened project', async () => {
     const root = await mkdtemp(join(tmpdir(), 'idle-file-service-'));
     const projects = new ProjectService();
