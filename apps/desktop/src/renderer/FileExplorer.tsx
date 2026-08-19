@@ -4,9 +4,11 @@ import type { FileEntry } from '../preload.js';
 
 interface FileExplorerProps {
   projectId: string | null;
+  selectedPath: string | null;
+  onSelectFile(path: string): void;
 }
 
-export function FileExplorer({ projectId }: FileExplorerProps) {
+export function FileExplorer({ projectId, selectedPath, onSelectFile }: FileExplorerProps) {
   const [entries, setEntries] = useState<Record<string, FileEntry[]>>({});
   const [expanded, setExpanded] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -16,7 +18,6 @@ export function FileExplorer({ projectId }: FileExplorerProps) {
     setExpanded([]);
     setError(null);
     if (!projectId) return;
-
     void loadDirectory(projectId, '.', setEntries, setError);
   }, [projectId]);
 
@@ -28,10 +29,7 @@ export function FileExplorer({ projectId }: FileExplorerProps) {
       setExpanded((current) => current.filter((item) => item !== path));
       return;
     }
-
-    if (!entries[path]) {
-      await loadDirectory(projectId, path, setEntries, setError);
-    }
+    if (!entries[path]) await loadDirectory(projectId, path, setEntries, setError);
     setExpanded((current) => [...current, path]);
   };
 
@@ -43,7 +41,9 @@ export function FileExplorer({ projectId }: FileExplorerProps) {
           entry={entry}
           entries={entries}
           expanded={expanded}
+          selectedPath={selectedPath}
           onToggle={toggleDirectory}
+          onSelectFile={onSelectFile}
           depth={0}
         />
       ))}
@@ -56,20 +56,24 @@ interface ExplorerEntryProps {
   entry: FileEntry;
   entries: Record<string, FileEntry[]>;
   expanded: string[];
+  selectedPath: string | null;
   onToggle(path: string): Promise<void>;
+  onSelectFile(path: string): void;
   depth: number;
 }
 
-function ExplorerEntry({ entry, entries, expanded, onToggle, depth }: ExplorerEntryProps) {
+function ExplorerEntry({ entry, entries, expanded, selectedPath, onToggle, onSelectFile, depth }: ExplorerEntryProps) {
   const isExpanded = expanded.includes(entry.path);
 
   return (
     <div role="treeitem" aria-expanded={entry.kind === 'directory' ? isExpanded : undefined}>
       <button
-        className="file-entry"
+        className={`file-entry${selectedPath === entry.path ? ' selected' : ''}`}
         style={{ paddingLeft: `${8 + depth * 14}px` }}
         type="button"
-        onClick={() => (entry.kind === 'directory' ? void onToggle(entry.path) : undefined)}
+        onClick={() =>
+          entry.kind === 'directory' ? void onToggle(entry.path) : onSelectFile(entry.path)
+        }
       >
         <span aria-hidden="true">{entry.kind === 'directory' ? (isExpanded ? '▾' : '▸') : '·'}</span>
         <span>{entry.name}</span>
@@ -81,7 +85,9 @@ function ExplorerEntry({ entry, entries, expanded, onToggle, depth }: ExplorerEn
               entry={child}
               entries={entries}
               expanded={expanded}
+              selectedPath={selectedPath}
               onToggle={onToggle}
+              onSelectFile={onSelectFile}
               depth={depth + 1}
             />
           ))
