@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import EditorView from '@monaco-editor/react';
+import type { OnChange } from '@monaco-editor/react';
 import { getEditorLanguage } from './editorModel.js';
 
 interface EditorProps {
@@ -50,13 +51,15 @@ export function Editor({ projectId, filePath }: EditorProps) {
   if (loading) return <p>Loading {filePath}…</p>;
   if (error) return <p role="alert">{error}</p>;
 
+  const handleChange: OnChange = (value) => setContent(value ?? '');
+
   return (
     <div className="editor-view" aria-label={`Editor for ${filePath}`}>
       <EditorView
         height="100%"
         language={getEditorLanguage(filePath)}
         value={content}
-        onChange={(value) => setContent(value ?? '')}
+        onChange={handleChange}
         theme="vs-dark"
         options={{ minimap: { enabled: false }, automaticLayout: true }}
       />
