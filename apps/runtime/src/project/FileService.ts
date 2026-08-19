@@ -1,5 +1,5 @@
-import { readFile, readdir, rename, stat, resolve, writeFile } from 'node:fs/promises';
-import { isAbsolute, relative, sep } from 'node:path';
+import { readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { ProjectService } from './ProjectService.js';
 
 export interface FileEntry {
