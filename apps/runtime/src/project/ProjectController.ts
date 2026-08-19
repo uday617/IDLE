@@ -1,5 +1,7 @@
+import type { ChangeSet } from '@idle/contracts';
 import type { Project, ProjectService } from './ProjectService.js';
 import type { FileContent, FileEntry, FileService } from './FileService.js';
+import type { ChangeSetApplyResult, ChangeSetService } from './ChangeSetService.js';
 
 export type ProjectCommand =
   | { type: 'project.open'; path: string }
@@ -7,14 +9,22 @@ export type ProjectCommand =
   | { type: 'project.close'; projectId: string }
   | { type: 'file.list'; projectId: string; path: string }
   | { type: 'file.read'; projectId: string; path: string }
-  | { type: 'file.write'; projectId: string; path: string; content: string };
+  | { type: 'file.write'; projectId: string; path: string; content: string }
+  | { type: 'changeset.apply'; projectId: string; changeSet: ChangeSet };
 
-export type ProjectCommandResult = Project | FileEntry[] | FileContent | null | { ok: true };
+export type ProjectCommandResult =
+  | Project
+  | FileEntry[]
+  | FileContent
+  | ChangeSetApplyResult
+  | null
+  | { ok: true };
 
 export class ProjectController {
   constructor(
     private readonly projects: ProjectService,
     private readonly files: FileService,
+    private readonly changeSets: ChangeSetService,
   ) {}
 
   async handle(command: ProjectCommand): Promise<ProjectCommandResult> {
@@ -33,6 +43,8 @@ export class ProjectController {
       case 'file.write':
         await this.files.write(command.projectId, command.path, command.content);
         return { ok: true };
+      case 'changeset.apply':
+        return this.changeSets.apply(command.projectId, command.changeSet);
     }
   }
 }
