@@ -8,7 +8,7 @@ await server.start();
 
 interface RuntimeRequest {
   id: number;
-  type: 'health' | 'project.open' | 'project.get' | 'project.close' | 'file.list';
+  type: 'health' | 'project.open' | 'project.get' | 'project.close' | 'file.list' | 'file.read';
   path?: string;
   projectId?: string;
 }
@@ -30,7 +30,9 @@ lines.on('line', async (line) => {
             ? { type: 'project.get', projectId: request.projectId ?? '' }
             : request.type === 'project.close'
               ? { type: 'project.close', projectId: request.projectId ?? '' }
-              : { type: 'file.list', projectId: request.projectId ?? '', path: request.path ?? '.' };
+              : request.type === 'file.list'
+                ? { type: 'file.list', projectId: request.projectId ?? '', path: request.path ?? '.' }
+                : { type: 'file.read', projectId: request.projectId ?? '', path: request.path ?? '' };
       result = await server.handleProject(command);
     }
 
