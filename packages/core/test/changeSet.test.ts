@@ -182,20 +182,16 @@ describe('validateChangeSet', () => {
 });
 
 describe('applyChangeSet', () => {
-  it('applies one hunk without changing unrelated lines', () => {
-    const base = 'function first() {\n  return 1;\n}\n\nfunction second() {\n  return 2;\n}\n';
+  it('applies one hunk without changing unrelated functions byte-for-byte', () => {
+    const base = 'function first() {\n  return 1;\n}\n\nfunction second() {\n  return 2;\n}\n\nfunction third() {\n  return 3;\n}\n';
     const result = applyChangeSet(
       modify('src/example.ts', base, 2, ['  return 1;'], ['  return 10;']),
       files({ 'src/example.ts': base }),
     );
 
-    expect(result.changes).toEqual([
-      {
-        path: 'src/example.ts',
-        operation: 'modify',
-        content: 'function first() {\n  return 10;\n}\n\nfunction second() {\n  return 2;\n}\n',
-      },
-    ]);
+    expect(result.changes[0]?.content).toBe(
+      'function first() {\n  return 10;\n}\n\nfunction second() {\n  return 2;\n}\n\nfunction third() {\n  return 3;\n}\n',
+    );
   });
 
   it('applies multiple ordered hunks, insertion, and deletion', () => {
@@ -265,6 +261,20 @@ describe('applyChangeSet', () => {
       changeSet,
       files({ 'src/good.ts': 'good\n', 'src/stale.ts': 'actual\n' }),
     )).toThrow(/BASE_MISMATCH/);
+  });
+
+  it('fails a planned change after an unrelated concurrent edit changes the base', () => {
+    const plannedBase = 'function a() {\n  return 1;\n}\n\nfunction b() {\n  return 2;\n}\n';
+    const concurrentVersion = 'function a() {\n  return 1;\n}\n\nfunction b() {\n  return 20;\n}\n';
+    const changeSet = modify('src/example.ts', plannedBase, 2, ['  return 1;'], ['  return 10;']);
+
+    const validation = validateChangeSet(changeSet, files({ 'src/example.ts': concurrentVersion }));
+
+    expect(validation.valid).toBe(false);
+    expect(validation.errors).toEqual([
+      expect.objectContaining({ path: 'src/example.ts', code: 'BASE_MISMATCH' }),
+    ]);
+    expect(() => applyChangeSet(changeSet, files({ 'src/example.ts': concurrentVersion }))).toThrow();
   });
 
   it('does not mutate the supplied file map', () => {
