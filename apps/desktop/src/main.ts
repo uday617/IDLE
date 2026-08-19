@@ -41,6 +41,10 @@ app.whenReady().then(() => {
     return runtimeClient?.request({ type: 'file.list', projectId, path }) ?? null;
   });
 
+  ipcMain.handle('project:file-read', async (_event, projectId: string, path: string) => {
+    return runtimeClient?.request({ type: 'file.read', projectId, path }) ?? null;
+  });
+
   ipcMain.handle('project:close', async (_event, projectId: string) => {
     return runtimeClient?.request({ type: 'project.close', projectId }) ?? null;
   });
