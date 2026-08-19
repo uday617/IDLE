@@ -1,4 +1,4 @@
-import { readdir } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { ProjectService } from './ProjectService.js';
 
@@ -6,6 +6,11 @@ export interface FileEntry {
   name: string;
   path: string;
   kind: 'file' | 'directory';
+}
+
+export interface FileContent {
+  path: string;
+  content: string;
 }
 
 export class FileService {
@@ -19,9 +24,7 @@ export class FileService {
     const requested = relativePath === '.' ? root : resolve(root, relativePath);
     const fromRoot = relative(root, requested);
 
-    if (isAbsolute(fromRoot) || fromRoot === '..' || fromRoot.startsWith(`..${sep}`)) {
-      throw new Error('Path is outside the project');
-    }
+    this.assertInsideProject(fromRoot);
 
     const entries = await readdir(requested, { withFileTypes: true });
     return entries
@@ -35,5 +38,29 @@ export class FileService {
         if (a.kind !== b.kind) return a.kind === 'directory' ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
+  }
+
+  async read(projectId: string, relativePath: string): Promise<FileContent> {
+    const project = await this.projects.get(projectId);
+    if (!project) throw new Error(`Project not found: ${projectId}`);
+
+    const root = resolve(project.path);
+    const requested = resolve(root, relativePath);
+    const fromRoot = relative(root, requested);
+    this.assertInsideProject(fromRoot);
+
+    const info = await stat(requested);
+    if (!info.isFile()) throw new Error(`Path is not a file: ${relativePath}`);
+
+    return {
+      path: fromRoot,
+      content: await readFile(requested, 'utf8'),
+    };
+  }
+
+  private assertInsideProject(fromRoot: string): void {
+    if (isAbsolute(fromRoot) || fromRoot === '..' || fromRoot.startsWith(`..${sep}`)) {
+      throw new Error('Path is outside the project');
+    }
   }
 }
