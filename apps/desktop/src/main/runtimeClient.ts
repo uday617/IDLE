@@ -12,7 +12,12 @@ export interface FileEntry {
   kind: 'file' | 'directory';
 }
 
-type RuntimeResponse = Project | FileEntry[] | null | { ok: true };
+export interface FileContent {
+  path: string;
+  content: string;
+}
+
+type RuntimeResponse = Project | FileEntry[] | FileContent | null | { ok: true };
 
 type PendingRequest = {
   resolve: (value: RuntimeResponse) => void;
