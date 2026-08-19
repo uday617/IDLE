@@ -1,7 +1,7 @@
 import type { ChangeSet } from '@idle/contracts';
 import type { Project, ProjectService } from './ProjectService.js';
 import type { FileContent, FileEntry, FileService } from './FileService.js';
-import type { ChangeSetApplyResult, ChangeSetService } from './ChangeSetService.js';
+import type { ChangeSetApplyResult, ChangeSetPreviewResult, ChangeSetService } from './ChangeSetService.js';
 
 export type ProjectCommand =
   | { type: 'project.open'; path: string }
@@ -10,12 +10,14 @@ export type ProjectCommand =
   | { type: 'file.list'; projectId: string; path: string }
   | { type: 'file.read'; projectId: string; path: string }
   | { type: 'file.write'; projectId: string; path: string; content: string }
+  | { type: 'changeset.preview'; projectId: string; changeSet: ChangeSet }
   | { type: 'changeset.apply'; projectId: string; changeSet: ChangeSet };
 
 export type ProjectCommandResult =
   | Project
   | FileEntry[]
   | FileContent
+  | ChangeSetPreviewResult
   | ChangeSetApplyResult
   | null
   | { ok: true };
@@ -43,6 +45,8 @@ export class ProjectController {
       case 'file.write':
         await this.files.write(command.projectId, command.path, command.content);
         return { ok: true };
+      case 'changeset.preview':
+        return this.changeSets.preview(command.projectId, command.changeSet);
       case 'changeset.apply':
         return this.changeSets.apply(command.projectId, command.changeSet);
     }
