@@ -1,4 +1,4 @@
-import type { FileEntry, Project } from '../preload.js';
+import type { FileContent, FileEntry, Project } from '../preload.js';
 
 declare global {
   interface Window {
@@ -7,6 +7,7 @@ declare global {
       project: {
         openDialog(): Promise<Project | null>;
         listFiles(projectId: string, path?: string): Promise<FileEntry[] | null>;
+        readFile(projectId: string, path: string): Promise<FileContent | null>;
         close(projectId: string): Promise<{ ok: true } | null>;
       };
     };
