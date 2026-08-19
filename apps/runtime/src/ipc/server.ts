@@ -3,6 +3,7 @@ import {
   type ProjectCommand,
   type ProjectCommandResult,
 } from '../project/ProjectController.js';
+import { FileService } from '../project/FileService.js';
 import { ProjectService } from '../project/ProjectService.js';
 
 export interface RuntimeHealth {
@@ -19,7 +20,8 @@ export interface RuntimeServer {
 
 export function createRuntimeServer(version: string): RuntimeServer {
   let started = false;
-  const projectController = new ProjectController(new ProjectService());
+  const projectService = new ProjectService();
+  const projectController = new ProjectController(projectService, new FileService(projectService));
 
   return {
     async start() {
