@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import type { FileEntry } from '../preload.js';
 
 interface FileExplorerProps {
@@ -92,8 +93,8 @@ function ExplorerEntry({ entry, entries, expanded, onToggle, depth }: ExplorerEn
 async function loadDirectory(
   projectId: string,
   path: string,
-  setEntries: React.Dispatch<React.SetStateAction<Record<string, FileEntry[]>>>,
-  setError: React.Dispatch<React.SetStateAction<string | null>>,
+  setEntries: Dispatch<SetStateAction<Record<string, FileEntry[]>>>,
+  setError: Dispatch<SetStateAction<string | null>>,
 ) {
   try {
     const result = await window.idle.project.listFiles(projectId, path);
