@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Editor } from './Editor.js';
 import { FileExplorer } from './FileExplorer.js';
 import { getWorkspacePanelTitle } from './workspaceModel.js';
 import {
@@ -10,9 +11,11 @@ import {
 
 export function WorkspaceShell() {
   const [state, setState] = useState(initialProjectWorkspaceState);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
   const openProject = async () => {
     setState(beginProjectOpen());
+    setSelectedFile(null);
     try {
       const opened = await window.idle.project.openDialog();
       setState((current) => completeProjectOpen(current, opened));
@@ -35,12 +38,16 @@ export function WorkspaceShell() {
       <section className="workspace-grid">
         <aside className="panel explorer">
           <h2>{getWorkspacePanelTitle('explorer')}</h2>
-          <FileExplorer projectId={state.project?.id ?? null} />
+          <FileExplorer
+            projectId={state.project?.id ?? null}
+            selectedPath={selectedFile}
+            onSelectFile={setSelectedFile}
+          />
           {state.error ? <p role="alert">{state.error}</p> : null}
         </aside>
         <section className="panel editor">
           <h2>{getWorkspacePanelTitle('editor')}</h2>
-          <p>{state.project ? 'Select a file to start editing.' : 'Open a project to begin.'}</p>
+          <Editor projectId={state.project?.id ?? null} filePath={selectedFile} />
         </section>
         <aside className="panel agents">
           <h2>{getWorkspacePanelTitle('agents')}</h2>
