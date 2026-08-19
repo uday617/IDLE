@@ -8,6 +8,7 @@ declare global {
         openDialog(): Promise<Project | null>;
         listFiles(projectId: string, path?: string): Promise<FileEntry[] | null>;
         readFile(projectId: string, path: string): Promise<FileContent | null>;
+        writeFile(projectId: string, path: string, content: string): Promise<{ ok: true } | null>;
         close(projectId: string): Promise<{ ok: true } | null>;
       };
     };
