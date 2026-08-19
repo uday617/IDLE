@@ -1,21 +1,24 @@
 import { useState } from 'react';
 import { getWorkspacePanelTitle } from './workspaceModel.js';
+import {
+  beginProjectOpen,
+  completeProjectOpen,
+  failProjectOpen,
+  initialProjectWorkspaceState,
+} from './projectState.js';
 
 export function WorkspaceShell() {
-  const [project, setProject] = useState<{ id: string; path: string } | null>(null);
-  const [opening, setOpening] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState(initialProjectWorkspaceState);
 
   const openProject = async () => {
-    setOpening(true);
-    setError(null);
+    setState(beginProjectOpen());
     try {
       const opened = await window.idle.project.openDialog();
-      if (opened) setProject(opened);
+      setState((current) => completeProjectOpen(current, opened));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to open project');
-    } finally {
-      setOpening(false);
+      setState((current) =>
+        failProjectOpen(current, cause instanceof Error ? cause.message : 'Unable to open project'),
+      );
     }
   };
 
@@ -24,19 +27,23 @@ export function WorkspaceShell() {
       <header className="titlebar">
         <strong>IDLE</strong>
         <span>Multi-agent coding workspace</span>
-        <button type="button" onClick={() => void openProject()} disabled={opening}>
-          {opening ? 'Opening…' : 'Open Project'}
+        <button type="button" onClick={() => void openProject()} disabled={state.opening}>
+          {state.opening ? 'Opening…' : 'Open Project'}
         </button>
       </header>
       <section className="workspace-grid">
         <aside className="panel explorer">
           <h2>{getWorkspacePanelTitle('explorer')}</h2>
-          {project ? <p title={project.path}>{project.path}</p> : <p>No project opened.</p>}
-          {error ? <p role="alert">{error}</p> : null}
+          {state.project ? (
+            <p title={state.project.path}>{state.project.path}</p>
+          ) : (
+            <p>No project opened.</p>
+          )}
+          {state.error ? <p role="alert">{state.error}</p> : null}
         </aside>
         <section className="panel editor">
           <h2>{getWorkspacePanelTitle('editor')}</h2>
-          <p>{project ? 'Select a file to start editing.' : 'Open a project to begin.'}</p>
+          <p>{state.project ? 'Select a file to start editing.' : 'Open a project to begin.'}</p>
         </section>
         <aside className="panel agents">
           <h2>{getWorkspacePanelTitle('agents')}</h2>
@@ -44,7 +51,7 @@ export function WorkspaceShell() {
         </aside>
       </section>
       <footer className="statusbar">
-        {project ? `Project: ${project.path}` : 'Foundation ready'}
+        {state.project ? `Project: ${state.project.path}` : 'Foundation ready'}
       </footer>
     </main>
   );
