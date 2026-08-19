@@ -1,36 +1,19 @@
-import type { ChangeSet, FileChange, TextHunk } from '@idle/contracts';
+import type { ChangeSet, ChangeSetValidationError, FileChange, TextHunk } from '@idle/contracts';
 
-export interface ChangeFileState {
+export type ChangeFileState = {
   exists: boolean;
   content: string;
-}
+};
 
-export interface ChangeSetValidationError {
-  path: string;
-  code:
-    | 'INVALID_PATH'
-    | 'DUPLICATE_PATH'
-    | 'BASE_MISMATCH'
-    | 'INVALID_HUNK'
-    | 'HUNK_MISMATCH'
-    | 'MISSING_CONTENT';
-  message: string;
-}
-
-export interface ChangeSetValidationResult {
-  valid: boolean;
-  errors: ChangeSetValidationError[];
-}
-
-export interface AppliedChange {
-  path: string;
-  operation: 'modify' | 'create' | 'delete';
-  content: string | null;
-}
-
-export interface ApplyChangeSetResult {
+export type ApplyChangeSetResult = {
   changes: AppliedChange[];
-}
+};
+
+export type AppliedChange = {
+  path: string;
+  operation: FileChange['operation'];
+  content: string | null;
+};
 
 export class ChangeSetApplyError extends Error {
   readonly errors: ChangeSetValidationError[];
@@ -93,6 +76,7 @@ function validateHunks(
   const { lines } = splitLines(content);
   let previousStart = 0;
   let previousEndExclusive = 0;
+  let previousOldLineCount = 0;
 
   for (const hunk of hunks as unknown[]) {
     if (!isTextHunk(hunk)) {
@@ -113,7 +97,9 @@ function validateHunks(
       continue;
     }
 
-    if (previousStart > 0 && hunk.oldStart <= previousStart) {
+    const sameStartAfterInsertion =
+      previousStart > 0 && hunk.oldStart === previousStart && previousOldLineCount === 0;
+    if (previousStart > 0 && (hunk.oldStart < previousStart || (hunk.oldStart === previousStart && !sameStartAfterInsertion))) {
       errors.push({
         path,
         code: 'INVALID_HUNK',
@@ -153,6 +139,7 @@ function validateHunks(
 
     previousStart = hunk.oldStart;
     previousEndExclusive = endIndex;
+    previousOldLineCount = hunk.oldLines.length;
   }
 }
 
@@ -289,3 +276,8 @@ export function applyChangeSet(
     }),
   };
 }
+
+type ChangeSetValidationResult = {
+  valid: boolean;
+  errors: ChangeSetValidationError[];
+};
