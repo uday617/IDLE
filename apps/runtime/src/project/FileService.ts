@@ -1,5 +1,5 @@
-import { lstat, readdir } from 'node:fs/promises';
-import { isAbsolute, relative, resolve } from 'node:path';
+import { readdir } from 'node:fs/promises';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { ProjectService } from './ProjectService.js';
 
 export interface FileEntry {
@@ -19,27 +19,18 @@ export class FileService {
     const requested = relativePath === '.' ? root : resolve(root, relativePath);
     const fromRoot = relative(root, requested);
 
-    if (isAbsolute(fromRoot) || fromRoot.startsWith(`..${requireSeparator()}`) || fromRoot === '..') {
+    if (isAbsolute(fromRoot) || fromRoot === '..' || fromRoot.startsWith(`..${sep}`)) {
       throw new Error('Path is outside the project');
     }
 
     const entries = await readdir(requested, { withFileTypes: true });
-    const result: FileEntry[] = [];
-
-    for (const entry of entries) {
-      if (entry.isSymbolicLink()) continue;
-      const childPath = fromRoot ? `${fromRoot}/${entry.name}` : entry.name;
-      const kind = entry.isDirectory() ? 'directory' : 'file';
-      result.push({ name: entry.name, path: childPath, kind });
-    }
-
-    return result.sort((a, b) => {
-      if (a.kind !== b.kind) return a.kind === 'directory' ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
+    return entries
+      .filter((entry) => !entry.isSymbolicLink())
+      .map((entry) => ({
+        name: entry.name,
+        path: fromRoot ? `${fromRoot}/${entry.name}` : entry.name,
+        kind: entry.isDirectory() ? 'directory' : 'file',
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
-}
-
-function requireSeparator(): string {
-  return '/';
 }
