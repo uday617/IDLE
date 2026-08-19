@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('idle', {
       ipcRenderer.invoke('project:files', projectId, path),
     readFile: (projectId: string, path: string): Promise<FileContent | null> =>
       ipcRenderer.invoke('project:file-read', projectId, path),
+    writeFile: (projectId: string, path: string, content: string): Promise<{ ok: true } | null> =>
+      ipcRenderer.invoke('project:file-write', projectId, path, content),
     close: (projectId: string): Promise<{ ok: true } | null> =>
       ipcRenderer.invoke('project:close', projectId),
   },
