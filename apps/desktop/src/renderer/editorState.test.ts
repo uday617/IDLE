@@ -37,10 +37,11 @@ describe('editorState', () => {
     });
   });
 
-  it('keeps dirty state when save fails', () => {
+  it('keeps the diff baseline and dirty state when save fails', () => {
     const edited = editEditorContent(openEditorFile(initialEditorState, 'README.md', 'hello'), 'updated');
     expect(failEditorSave(beginEditorSave(edited), 'disk full')).toEqual({
       ...edited,
+      originalContent: 'hello',
       saving: false,
       error: 'disk full',
     });
