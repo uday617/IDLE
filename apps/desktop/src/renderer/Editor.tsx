@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import EditorView from '@monaco-editor/react';
+import * as MonacoReact from '@monaco-editor/react';
 import type { OnChange } from '@monaco-editor/react';
 import { getEditorLanguage } from './editorModel.js';
 
@@ -52,10 +52,11 @@ export function Editor({ projectId, filePath }: EditorProps) {
   if (error) return <p role="alert">{error}</p>;
 
   const handleChange: OnChange = (value) => setContent(value ?? '');
+  const MonacoEditor = MonacoReact.Editor;
 
   return (
     <div className="editor-view" aria-label={`Editor for ${filePath}`}>
-      <EditorView
+      <MonacoEditor
         height="100%"
         language={getEditorLanguage(filePath)}
         value={content}
