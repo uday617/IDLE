@@ -6,10 +6,16 @@ export interface Project {
   path: string;
 }
 
-type ProjectResponse = Project | null | { ok: true };
+export interface FileEntry {
+  name: string;
+  path: string;
+  kind: 'file' | 'directory';
+}
+
+type RuntimeResponse = Project | FileEntry[] | null | { ok: true };
 
 type PendingRequest = {
-  resolve: (value: ProjectResponse) => void;
+  resolve: (value: RuntimeResponse) => void;
   reject: (error: Error) => void;
 };
 
@@ -31,7 +37,7 @@ export class RuntimeClient {
     const lines = createInterface({ input: child.stdout });
     lines.on('line', (line) => {
       try {
-        const message = JSON.parse(line) as { id?: number; error?: string; result?: ProjectResponse };
+        const message = JSON.parse(line) as { id?: number; error?: string; result?: RuntimeResponse };
         if (typeof message.id !== 'number') return;
         const request = this.pending.get(message.id);
         if (!request) return;
@@ -57,7 +63,7 @@ export class RuntimeClient {
     this.process = null;
   }
 
-  request(command: Record<string, unknown>): Promise<ProjectResponse> {
+  request(command: Record<string, unknown>): Promise<RuntimeResponse> {
     if (!this.process) throw new Error('Agent runtime is not started');
     const id = this.nextId++;
 
