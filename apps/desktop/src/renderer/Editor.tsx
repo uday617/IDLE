@@ -2,6 +2,14 @@ import { useEffect, useState } from 'react';
 import * as MonacoReact from '@monaco-editor/react';
 import type { OnChange } from '@monaco-editor/react';
 import { getEditorLanguage } from './editorModel.js';
+import {
+  beginEditorSave,
+  completeEditorSave,
+  editEditorContent,
+  failEditorSave,
+  initialEditorState,
+  openEditorFile,
+} from './editorState.js';
 
 interface EditorProps {
   projectId: string | null;
@@ -9,34 +17,28 @@ interface EditorProps {
 }
 
 export function Editor({ projectId, filePath }: EditorProps) {
-  const [content, setContent] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [state, setState] = useState(initialEditorState);
 
   useEffect(() => {
     let active = true;
     if (!projectId || !filePath) {
-      setContent('');
-      setError(null);
+      setState(initialEditorState);
       return () => {
         active = false;
       };
     }
 
-    setLoading(true);
-    setError(null);
+    setState({ ...initialEditorState, path: filePath });
     void window.idle.project.readFile(projectId, filePath).then((result) => {
       if (!active) return;
       if (!result) {
-        setError('Unable to read file');
+        setState((current) => failEditorSave(current, 'Unable to read file'));
       } else {
-        setContent(result.content);
+        setState((current) => openEditorFile(current, result.path, result.content));
       }
-      setLoading(false);
     }).catch((cause) => {
       if (!active) return;
-      setError(cause instanceof Error ? cause.message : 'Unable to read file');
-      setLoading(false);
+      setState((current) => failEditorSave(current, cause instanceof Error ? cause.message : 'Unable to read file'));
     });
 
     return () => {
@@ -44,22 +46,49 @@ export function Editor({ projectId, filePath }: EditorProps) {
     };
   }, [projectId, filePath]);
 
-  if (!projectId || !filePath) {
-    return <p>Select a file to start editing.</p>;
-  }
+  const save = async () => {
+    if (!projectId || !state.path || !state.dirty || state.saving) return;
+    setState((current) => beginEditorSave(current));
+    try {
+      const result = await window.idle.project.writeFile(projectId, state.path, state.content);
+      if (!result) throw new Error('Unable to save file');
+      setState((current) => completeEditorSave(current));
+    } catch (cause) {
+      setState((current) => failEditorSave(current, cause instanceof Error ? cause.message : 'Unable to save file'));
+    }
+  };
 
-  if (loading) return <p>Loading {filePath}…</p>;
-  if (error) return <p role="alert">{error}</p>;
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        void save();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
 
-  const handleChange: OnChange = (value) => setContent(value ?? '');
+  if (!projectId || !filePath) return <p>Select a file to start editing.</p>;
+  if (state.error) return <p role="alert">{state.error}</p>;
+
+  const handleChange: OnChange = (value) => {
+    setState((current) => editEditorContent(current, value ?? ''));
+  };
   const MonacoEditor = MonacoReact.Editor;
 
   return (
     <div className="editor-view" aria-label={`Editor for ${filePath}`}>
+      <div className="editor-toolbar">
+        <span>{state.path}{state.dirty ? ' •' : ''}</span>
+        <button type="button" onClick={() => void save()} disabled={!state.dirty || state.saving}>
+          {state.saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
       <MonacoEditor
-        height="100%"
+        height="calc(100% - 36px)"
         language={getEditorLanguage(filePath)}
-        value={content}
+        value={state.content}
         onChange={handleChange}
         theme="vs-dark"
         options={{ minimap: { enabled: false }, automaticLayout: true }}
