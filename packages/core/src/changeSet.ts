@@ -44,31 +44,35 @@ export class ChangeSetApplyError extends Error {
 
 const WINDOWS_DRIVE_PREFIX = /^[A-Za-z]:/;
 
+type SplitLinesResult = {
+  lines: string[];
+  newline: '\n' | '\r\n';
+  trailingNewline: boolean;
+};
+
 function isValidProjectPath(path: unknown): path is string {
-  if (typeof path !== 'string' || path.length === 0) {
-    return false;
-  }
-  if (path.startsWith('/') || path.includes('\\') || path.includes('\0')) {
-    return false;
-  }
-  if (WINDOWS_DRIVE_PREFIX.test(path)) {
-    return false;
-  }
+  if (typeof path !== 'string' || path.length === 0) return false;
+  if (path.startsWith('/') || path.includes('\\') || path.includes('\0')) return false;
+  if (WINDOWS_DRIVE_PREFIX.test(path)) return false;
 
   const segments = path.split('/');
   return segments.every((segment) => segment.length > 0 && segment !== '.' && segment !== '..');
 }
 
-function splitLines(content: string): { lines: string[]; newline: '\n' | '\r\n' } {
+function splitLines(content: string): SplitLinesResult {
   const newline: '\n' | '\r\n' = content.includes('\r\n') ? '\r\n' : '\n';
-  return {
-    lines: content.split(/\r\n|\n/),
-    newline,
-  };
+  const trailingNewline = content.endsWith(newline);
+  let lines = content.split(/\r\n|\n/);
+
+  if (trailingNewline) lines = lines.slice(0, -1);
+  if (content.length === 0) lines = [];
+
+  return { lines, newline, trailingNewline };
 }
 
-function joinLines(lines: string[], newline: '\n' | '\r\n'): string {
-  return lines.join(newline);
+function joinLines(lines: string[], newline: '\n' | '\r\n', trailingNewline: boolean): string {
+  const content = lines.join(newline);
+  return trailingNewline ? `${content}${newline}` : content;
 }
 
 function validateHunks(
@@ -153,9 +157,7 @@ function validateHunks(
 }
 
 function isTextHunk(value: unknown): value is TextHunk {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
+  if (typeof value !== 'object' || value === null) return false;
 
   const hunk = value as Record<string, unknown>;
   return (
@@ -254,19 +256,17 @@ export function validateChangeSet(
 }
 
 function applyModify(change: Extract<FileChange, { operation: 'modify' }>): string {
-  const { lines, newline } = splitLines(change.baseContent);
+  const { lines, newline, trailingNewline } = splitLines(change.baseContent);
   const result = [...lines];
 
   for (let index = change.hunks.length - 1; index >= 0; index -= 1) {
     const hunk = change.hunks[index];
-    if (!hunk) {
-      continue;
-    }
+    if (!hunk) continue;
     const startIndex = hunk.oldStart - 1;
     result.splice(startIndex, hunk.oldLines.length, ...hunk.newLines);
   }
 
-  return joinLines(result, newline);
+  return joinLines(result, newline, trailingNewline);
 }
 
 export function applyChangeSet(
@@ -274,31 +274,17 @@ export function applyChangeSet(
   files: ReadonlyMap<string, ChangeFileState>,
 ): ApplyChangeSetResult {
   const validation = validateChangeSet(changeSet, files);
-  if (!validation.valid) {
-    throw new ChangeSetApplyError(validation.errors);
-  }
+  if (!validation.valid) throw new ChangeSetApplyError(validation.errors);
 
   return {
     changes: changeSet.changes.map((change): AppliedChange => {
       switch (change.operation) {
         case 'modify':
-          return {
-            path: change.path,
-            operation: change.operation,
-            content: applyModify(change),
-          };
+          return { path: change.path, operation: change.operation, content: applyModify(change) };
         case 'create':
-          return {
-            path: change.path,
-            operation: change.operation,
-            content: change.content,
-          };
+          return { path: change.path, operation: change.operation, content: change.content };
         case 'delete':
-          return {
-            path: change.path,
-            operation: change.operation,
-            content: null,
-          };
+          return { path: change.path, operation: change.operation, content: null };
       }
     }),
   };
