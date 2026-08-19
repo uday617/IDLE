@@ -26,11 +26,14 @@ export class FileService {
     const entries = await readdir(requested, { withFileTypes: true });
     return entries
       .filter((entry) => !entry.isSymbolicLink())
-      .map((entry) => ({
+      .map((entry): FileEntry => ({
         name: entry.name,
         path: fromRoot ? `${fromRoot}/${entry.name}` : entry.name,
         kind: entry.isDirectory() ? 'directory' : 'file',
       }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => {
+        if (a.kind !== b.kind) return a.kind === 'directory' ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
   }
 }
