@@ -1,4 +1,4 @@
-import { readFile, readdir, stat } from 'node:fs/promises';
+import { readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { ProjectService } from './ProjectService.js';
 
@@ -23,7 +23,6 @@ export class FileService {
     const root = resolve(project.path);
     const requested = relativePath === '.' ? root : resolve(root, relativePath);
     const fromRoot = relative(root, requested);
-
     this.assertInsideProject(fromRoot);
 
     const entries = await readdir(requested, { withFileTypes: true });
@@ -52,10 +51,24 @@ export class FileService {
     const info = await stat(requested);
     if (!info.isFile()) throw new Error(`Path is not a file: ${relativePath}`);
 
-    return {
-      path: fromRoot,
-      content: await readFile(requested, 'utf8'),
-    };
+    return { path: fromRoot, content: await readFile(requested, 'utf8') };
+  }
+
+  async write(projectId: string, relativePath: string, content: string): Promise<void> {
+    const project = await this.projects.get(projectId);
+    if (!project) throw new Error(`Project not found: ${projectId}`);
+
+    const root = resolve(project.path);
+    const requested = resolve(root, relativePath);
+    const fromRoot = relative(root, requested);
+    this.assertInsideProject(fromRoot);
+
+    const info = await stat(requested).catch(() => null);
+    if (info && !info.isFile()) throw new Error(`Path is not a file: ${relativePath}`);
+
+    const temporary = `${requested}.idle-tmp-${process.pid}`;
+    await writeFile(temporary, content, 'utf8');
+    await rename(temporary, requested);
   }
 
   private assertInsideProject(fromRoot: string): void {
