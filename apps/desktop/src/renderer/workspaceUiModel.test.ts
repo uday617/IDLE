@@ -17,7 +17,7 @@ describe('workspace UI model', () => {
   it('reports a useful status for a clean opened project', () => {
     expect(getWorkspaceStatus({ projectPath: 'C:/repo', dirty: false, agentCount: 0 })).toEqual({
       project: 'C:/repo',
-      changes: '0 changes',
+      changes: 'No pending changes',
       agents: 'No active agents',
     });
   });
