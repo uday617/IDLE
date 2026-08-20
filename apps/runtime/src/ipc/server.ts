@@ -1,3 +1,4 @@
+import type { TaskResult, TaskStatusEvent, TaskSubmitRequest, TaskSubmitResult } from '@idle/contracts';
 import {
   ProjectController,
   type ProjectCommand,
@@ -17,6 +18,9 @@ export interface RuntimeServer {
   stop(): Promise<void>;
   health(): RuntimeHealth;
   handleProject(command: ProjectCommand): Promise<ProjectCommandResult>;
+  submitTask(request: TaskSubmitRequest): Promise<TaskSubmitResult>;
+  getTask(taskId: string): Promise<TaskResult | null>;
+  subscribeTask(listener: (event: TaskStatusEvent) => void): () => void;
 }
 
 export function createRuntimeServer(version: string): RuntimeServer {
@@ -25,6 +29,8 @@ export function createRuntimeServer(version: string): RuntimeServer {
   const fileService = new FileService(projectService);
   const changeSetService = new ChangeSetService(projectService, fileService);
   const projectController = new ProjectController(projectService, fileService, changeSetService);
+  const taskListeners = new Set<(event: TaskStatusEvent) => void>();
+  const tasks = new Map<string, TaskResult>();
 
   return {
     async start() {
@@ -32,6 +38,7 @@ export function createRuntimeServer(version: string): RuntimeServer {
     },
     async stop() {
       started = false;
+      taskListeners.clear();
     },
     health() {
       if (!started) throw new Error('Runtime is not started');
@@ -40,6 +47,28 @@ export function createRuntimeServer(version: string): RuntimeServer {
     async handleProject(command) {
       if (!started) throw new Error('Runtime is not started');
       return projectController.handle(command);
+    },
+    async submitTask(request) {
+      if (!started) throw new Error('Runtime is not started');
+      const result: TaskSubmitResult = { taskId: request.taskId, status: 'pending' };
+      const task: TaskResult = { taskId: request.taskId, status: 'paused', error: 'Execution provider is not connected yet' };
+      tasks.set(request.taskId, task);
+      const event: TaskStatusEvent = {
+        taskId: request.taskId,
+        status: 'paused',
+        timestamp: new Date().toISOString(),
+        message: task.error,
+      };
+      for (const listener of taskListeners) listener(event);
+      return result;
+    },
+    async getTask(taskId) {
+      if (!started) throw new Error('Runtime is not started');
+      return tasks.get(taskId) ?? null;
+    },
+    subscribeTask(listener) {
+      taskListeners.add(listener);
+      return () => taskListeners.delete(listener);
     },
   };
 }
