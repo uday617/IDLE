@@ -10,3 +10,5 @@ coverage/
 .idea/
 .agent/
 .worktrees/
+apps/desktop/runtime-bundle/
+apps/desktop/release/
