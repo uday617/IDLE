@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { TaskResult, TaskStatusEvent, TaskSubmitRequest, TaskSubmitResult } from '@idle/contracts';
 
 export interface Project {
   id: string;
@@ -26,7 +27,15 @@ contextBridge.exposeInMainWorld('idle', {
       ipcRenderer.invoke('project:file-read', projectId, path),
     writeFile: (projectId: string, path: string, content: string): Promise<{ ok: true } | null> =>
       ipcRenderer.invoke('project:file-write', projectId, path, content),
-    close: (projectId: string): Promise<{ ok: true } | null> =>
-      ipcRenderer.invoke('project:close', projectId),
+    close: (projectId: string): Promise<{ ok: true } | null> => ipcRenderer.invoke('project:close', projectId),
+  },
+  tasks: {
+    submit: (request: TaskSubmitRequest): Promise<TaskSubmitResult> => ipcRenderer.invoke('task:submit', request),
+    get: (taskId: string): Promise<TaskResult | null> => ipcRenderer.invoke('task:get', taskId),
+    subscribe: (listener: (event: TaskStatusEvent) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: TaskStatusEvent) => listener(payload);
+      ipcRenderer.on('task:status', handler);
+      return () => ipcRenderer.removeListener('task:status', handler);
+    },
   },
 });
