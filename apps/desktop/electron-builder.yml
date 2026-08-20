@@ -4,7 +4,7 @@ artifactName: IDLE-${version}-${arch}.${ext}
 compression: maximum
 asar: true
 files:
-  - dist/**
+  - out/**
 extraResources:
   - from: runtime-bundle
     to: runtime
