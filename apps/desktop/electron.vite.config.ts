@@ -12,6 +12,11 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
   },
   preload: {
+    build: {
+      lib: {
+        entry: resolve('src/preload.ts'),
+      },
+    },
     plugins: [externalizeDepsPlugin()],
   },
   renderer: {
