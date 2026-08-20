@@ -1,5 +1,6 @@
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import type { TaskResult, TaskStatusEvent, TaskSubmitRequest, TaskSubmitResult } from '@idle/contracts';
 
 export interface Project {
   id: string;
@@ -17,7 +18,8 @@ export interface FileContent {
   content: string;
 }
 
-type RuntimeResponse = Project | FileEntry[] | FileContent | null | { ok: true };
+type RuntimeResponse = Project | FileEntry[] | FileContent | TaskSubmitResult | TaskResult | null | { ok: true };
+type TaskEventListener = (event: TaskStatusEvent) => void;
 
 type PendingRequest = {
   resolve: (value: RuntimeResponse) => void;
@@ -28,6 +30,7 @@ export class RuntimeClient {
   private process: ChildProcessWithoutNullStreams | null = null;
   private nextId = 1;
   private readonly pending = new Map<number, PendingRequest>();
+  private readonly taskListeners = new Set<TaskEventListener>();
 
   constructor(private readonly runtimePath: string) {}
 
@@ -42,7 +45,19 @@ export class RuntimeClient {
     const lines = createInterface({ input: child.stdout });
     lines.on('line', (line) => {
       try {
-        const message = JSON.parse(line) as { id?: number; error?: string; result?: RuntimeResponse };
+        const message = JSON.parse(line) as {
+          id?: number;
+          error?: string;
+          result?: RuntimeResponse;
+          event?: string;
+          payload?: TaskStatusEvent;
+        };
+
+        if (message.event === 'task.status' && message.payload) {
+          for (const listener of this.taskListeners) listener(message.payload);
+          return;
+        }
+
         if (typeof message.id !== 'number') return;
         const request = this.pending.get(message.id);
         if (!request) return;
@@ -76,5 +91,18 @@ export class RuntimeClient {
       this.pending.set(id, { resolve, reject });
       this.process?.stdin.write(`${JSON.stringify({ id, ...command })}\n`);
     });
+  }
+
+  submitTask(request: TaskSubmitRequest): Promise<TaskSubmitResult> {
+    return this.request({ type: 'task.submit', ...request }) as Promise<TaskSubmitResult>;
+  }
+
+  getTask(taskId: string): Promise<TaskResult | null> {
+    return this.request({ type: 'task.get', taskId }) as Promise<TaskResult | null>;
+  }
+
+  subscribeTask(listener: TaskEventListener): () => void {
+    this.taskListeners.add(listener);
+    return () => this.taskListeners.delete(listener);
   }
 }
