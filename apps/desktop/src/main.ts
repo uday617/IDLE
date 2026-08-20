@@ -25,7 +25,11 @@ const createWindow = () => {
 };
 
 app.whenReady().then(() => {
-  runtimeClient = new RuntimeClient(join(app.getAppPath(), '../runtime/dist/main.js'));
+  const runtimePath = app.isPackaged
+    ? join(process.resourcesPath, 'runtime', 'main.js')
+    : join(app.getAppPath(), '../runtime/dist/main.js');
+
+  runtimeClient = new RuntimeClient(runtimePath);
   runtimeClient.start();
 
   ipcMain.handle('project:open-dialog', async () => {
