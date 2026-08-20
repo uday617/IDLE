@@ -33,8 +33,7 @@ export class TaskRunner {
     this.emit(created);
 
     if (request.checkpoint) {
-      const checkpointed = await this.tasks.checkpoint(request.id, request.checkpoint);
-      this.emit(checkpointed);
+      await this.tasks.checkpoint(request.id, request.checkpoint);
     }
 
     const running = await this.tasks.start(request.id);
