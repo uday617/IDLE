@@ -16,10 +16,13 @@ import {
 
 const emptyAgentPanel = getAgentPanelState([]);
 
+type InputMode = 'task' | 'command';
+
 export function WorkspaceShell() {
   const [state, setState] = useState(initialProjectWorkspaceState);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [taskPrompt, setTaskPrompt] = useState('');
+  const [inputMode, setInputMode] = useState<InputMode>('task');
   const taskInputRef = useRef<HTMLInputElement>(null);
 
   const openProject = async () => {
@@ -35,7 +38,8 @@ export function WorkspaceShell() {
     }
   };
 
-  const focusQuickTask = () => {
+  const focusInput = (mode: InputMode) => {
+    setInputMode(mode);
     taskInputRef.current?.focus();
   };
 
@@ -65,7 +69,7 @@ export function WorkspaceShell() {
           <button
             className="action-button primary-action"
             type="button"
-            onClick={focusQuickTask}
+            onClick={() => focusInput('task')}
             disabled={!state.project}
             title={`${workspaceActions[1].label} (${workspaceActions[1].shortcut})`}
           >
@@ -74,7 +78,7 @@ export function WorkspaceShell() {
           <button
             className="icon-button"
             type="button"
-            onClick={focusQuickTask}
+            onClick={() => focusInput('command')}
             title={`${workspaceActions[2].label} (${workspaceActions[2].shortcut})`}
             aria-label="Command search"
           >
@@ -85,16 +89,22 @@ export function WorkspaceShell() {
 
       <div className="taskbar">
         <label className="quick-task-input">
-          <span aria-hidden="true">✦</span>
+          <span aria-hidden="true">{inputMode === 'command' ? '⌕' : '✦'}</span>
           <input
             ref={taskInputRef}
             value={taskPrompt}
             onChange={(event) => setTaskPrompt(event.target.value)}
-            placeholder={state.project ? 'Ask IDLE to change, explain, or verify something…' : 'Open a project to start a task'}
+            placeholder={
+              !state.project
+                ? 'Open a project to start a task'
+                : inputMode === 'command'
+                  ? 'Search commands, files, and actions…'
+                  : 'Ask IDLE to change, explain, or verify something…'
+            }
             disabled={!state.project}
-            aria-label="Quick Task"
+            aria-label={inputMode === 'command' ? 'Command search' : 'Quick Task'}
           />
-          <kbd>Ctrl K</kbd>
+          <kbd>{inputMode === 'command' ? 'Ctrl Shift P' : 'Ctrl K'}</kbd>
         </label>
         <span className="taskbar-hint">AI changes will be reviewed before they are applied.</span>
       </div>
@@ -141,7 +151,7 @@ export function WorkspaceShell() {
             <div className="agent-orbit" aria-hidden="true">✦</div>
             <strong>Ready for agent work</strong>
             <p>Start a Quick Task and IDLE will show planning, execution, verification, and review here.</p>
-            <button className="secondary-button" type="button" onClick={focusQuickTask} disabled={!state.project}>
+            <button className="secondary-button" type="button" onClick={() => focusInput('task')} disabled={!state.project}>
               Start a task
             </button>
           </div>
