@@ -15,7 +15,10 @@ export class ToolExecutor {
 
   async execute(command: string, cwd: string, policy: CommandPolicy): Promise<ToolExecutionResult> {
     SecurityPolicy.validateCommand(policy, command);
-    const [executable, ...args] = command.trim().split(/\s+/);
+    const parts = command.trim().split(/\s+/);
+    const executable = parts[0];
+    if (!executable) throw new Error('Command cannot be empty');
+    const args = parts.slice(1);
     const result = await execFileAsync(executable, args, { cwd, windowsHide: true });
     return {
       stdout: this.credentials.redact(result.stdout),
