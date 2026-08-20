@@ -20,7 +20,7 @@ export interface WorkspaceStatusInput {
 export function getWorkspaceStatus(input: WorkspaceStatusInput) {
   return {
     project: input.projectPath ?? 'No project opened',
-    changes: input.dirty ? 'Unsaved changes' : '0 changes',
+    changes: input.dirty ? 'Unsaved changes' : 'No pending changes',
     agents: input.agentCount === 0 ? 'No active agents' : `${input.agentCount} active agent${input.agentCount === 1 ? '' : 's'}`,
   };
 }
