@@ -24,7 +24,8 @@ export interface ChangeSetPreviewResult {
 
 function lineCount(content: string | null): number {
   if (content === null || content.length === 0) return 0;
-  return content.split('\n').length;
+  const lines = content.split('\n');
+  return lines[lines.length - 1] === '' ? lines.length - 1 : lines.length;
 }
 
 export class ChangeSetService {
