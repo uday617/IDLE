@@ -33,9 +33,9 @@ export class WorktreeManager {
 
     const id = randomUUID();
     const branch = `idle/${this.slug(taskId)}/${this.slug(agentId)}-${id.slice(0, 8)}`;
-    const path = join(project.path, '.idle', 'worktrees', id);
+    const path = join(project.path, '.worktrees', id);
 
-    await mkdir(join(project.path, '.idle', 'worktrees'), { recursive: true });
+    await mkdir(join(project.path, '.worktrees'), { recursive: true });
     await this.git(project.path, 'worktree', 'add', '-b', branch, path, 'HEAD');
 
     const worktree: Worktree = { id, projectId, taskId, agentId, path, branch };
