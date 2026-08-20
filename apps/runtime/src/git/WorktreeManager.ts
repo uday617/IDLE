@@ -65,6 +65,11 @@ export class WorktreeManager {
     const project = await this.projects.get(worktree.projectId);
     if (!project) throw new Error(`Project not found: ${worktree.projectId}`);
 
+    const currentBranch = await this.git(project.path, 'branch', '--show-current');
+    if (currentBranch !== target) {
+      throw new Error(`Target branch must be checked out: expected ${target}, found ${currentBranch || 'detached HEAD'}`);
+    }
+
     try {
       await this.git(project.path, 'merge', '--no-edit', worktree.branch);
       return { merged: true, target, conflicts: [] };
@@ -72,7 +77,7 @@ export class WorktreeManager {
       const status = await this.git(project.path, 'status', '--porcelain');
       const conflicts = status
         .split('\n')
-        .filter((line) => /^[ MARCUD?]{2} /.test(line) && /^(UU|AA|DD|AU|UA|DU|UD) /.test(line))
+        .filter((line) => /^(UU|AA|DD|AU|UA|DU|UD) /.test(line))
         .map((line) => line.slice(3))
         .sort();
 
