@@ -1,25 +1,62 @@
+import { useState } from 'react';
+import { Editor } from './Editor.js';
+import { FileExplorer } from './FileExplorer.js';
+import { getWorkspacePanelTitle } from './workspaceModel.js';
+import {
+  beginProjectOpen,
+  completeProjectOpen,
+  failProjectOpen,
+  initialProjectWorkspaceState,
+} from './projectState.js';
+
 export function WorkspaceShell() {
+  const [state, setState] = useState(initialProjectWorkspaceState);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+
+  const openProject = async () => {
+    setState(beginProjectOpen());
+    setSelectedFile(null);
+    try {
+      const opened = await window.idle.project.openDialog();
+      setState((current) => completeProjectOpen(current, opened));
+    } catch (cause) {
+      setState((current) =>
+        failProjectOpen(current, cause instanceof Error ? cause.message : 'Unable to open project'),
+      );
+    }
+  };
+
   return (
     <main className="workspace-shell">
       <header className="titlebar">
         <strong>IDLE</strong>
         <span>Multi-agent coding workspace</span>
+        <button type="button" onClick={() => void openProject()} disabled={state.opening}>
+          {state.opening ? 'Opening…' : 'Open Project'}
+        </button>
       </header>
       <section className="workspace-grid">
         <aside className="panel explorer">
-          <h2>Project</h2>
-          <p>Open a project to begin.</p>
+          <h2>{getWorkspacePanelTitle('explorer')}</h2>
+          <FileExplorer
+            projectId={state.project?.id ?? null}
+            selectedPath={selectedFile}
+            onSelectFile={setSelectedFile}
+          />
+          {state.error ? <p role="alert">{state.error}</p> : null}
         </aside>
         <section className="panel editor">
-          <h2>Editor</h2>
-          <p>Code editor surface coming next.</p>
+          <h2>{getWorkspacePanelTitle('editor')}</h2>
+          <Editor projectId={state.project?.id ?? null} filePath={selectedFile} />
         </section>
         <aside className="panel agents">
-          <h2>Agents</h2>
+          <h2>{getWorkspacePanelTitle('agents')}</h2>
           <p>No active agents.</p>
         </aside>
       </section>
-      <footer className="statusbar">Foundation ready</footer>
+      <footer className="statusbar">
+        {state.project ? `Project: ${state.project.path}` : 'Foundation ready'}
+      </footer>
     </main>
   );
 }

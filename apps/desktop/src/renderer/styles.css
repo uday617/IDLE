@@ -7,11 +7,17 @@
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; height: 100%; margin: 0; }
 body { overflow: hidden; }
+button { font: inherit; }
 .workspace-shell { height: 100%; display: grid; grid-template-rows: 48px 1fr 24px; }
 .titlebar { display: flex; align-items: center; gap: 16px; padding: 0 16px; border-bottom: 1px solid #29313a; background: #171d24; }
 .titlebar span { color: #8e9aa7; font-size: 13px; }
+.titlebar button { margin-left: auto; border: 1px solid #39434e; border-radius: 5px; padding: 6px 10px; color: #e8edf2; background: #202832; cursor: pointer; }
+.titlebar button:disabled { cursor: wait; opacity: .65; }
 .workspace-grid { min-height: 0; display: grid; grid-template-columns: 240px 1fr 300px; gap: 1px; background: #29313a; }
 .panel { min-width: 0; background: #11161c; padding: 16px; }
 .panel h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: #aab5c0; }
 .panel p { color: #6f7b87; font-size: 13px; }
+.file-explorer { overflow: auto; max-height: calc(100vh - 120px); margin: 0 -8px; }
+.file-entry { width: 100%; display: flex; align-items: center; gap: 6px; border: 0; padding-top: 4px; padding-bottom: 4px; color: #c8d1da; background: transparent; text-align: left; cursor: pointer; font-size: 13px; }
+.file-entry:hover { background: #1a222b; }
 .statusbar { display: flex; align-items: center; padding: 0 10px; background: #171d24; color: #82909d; font-size: 11px; }
