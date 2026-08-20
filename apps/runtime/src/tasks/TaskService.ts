@@ -45,7 +45,7 @@ export class TaskService {
   }
 
   async start(id: string): Promise<TaskRecord> {
-    return this.update(id, { status: 'running', error: undefined });
+    return this.update(id, { status: 'running' });
   }
 
   async checkpoint(id: string, checkpoint: TaskCheckpoint): Promise<TaskRecord> {
@@ -53,7 +53,7 @@ export class TaskService {
   }
 
   async complete(id: string): Promise<TaskRecord> {
-    return this.update(id, { status: 'completed', error: undefined });
+    return this.update(id, { status: 'completed' });
   }
 
   async fail(id: string, error: Error | string): Promise<TaskRecord> {
@@ -61,7 +61,9 @@ export class TaskService {
   }
 
   async pause(id: string, error?: string): Promise<TaskRecord> {
-    return this.update(id, { status: 'paused', error });
+    return error === undefined
+      ? this.update(id, { status: 'paused' })
+      : this.update(id, { status: 'paused', error });
   }
 
   get(id: string): TaskRecord | undefined {
