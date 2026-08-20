@@ -17,6 +17,10 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
 async function createRepository(): Promise<{ root: string; branch: string }> {
   const root = await mkdtemp(join(tmpdir(), 'idle-worktree-'));
   await git(root, 'init', '-b', 'main');
+  // Keep fixture files byte-for-byte identical across platforms. Git can inherit
+  // core.autocrlf=true on Windows runners, which would otherwise rewrite LF to
+  // CRLF during worktree checkout and make these merge tests environment-dependent.
+  await git(root, 'config', 'core.autocrlf', 'false');
   await git(root, 'config', 'user.name', 'IDLE Test');
   await git(root, 'config', 'user.email', 'idle-test@example.com');
   await writeFile(join(root, 'app.txt'), 'base\n');
