@@ -18,6 +18,27 @@ describe('runtime server', () => {
     await server.stop();
   });
 
+  it('accepts a task through the runtime task boundary without fabricating execution', async () => {
+    const server = createRuntimeServer('0.1.0');
+    await server.start();
+    await expect(server.submitTask({ taskId: 'task-ipc-1', projectId: 'project-1', prompt: 'inspect the project' })).resolves.toEqual({
+      taskId: 'task-ipc-1',
+      status: 'pending',
+    });
+    await expect(server.getTask('task-ipc-1')).resolves.toBeNull();
+    await server.stop();
+  });
+
+  it('supports task status subscriptions and cleanup', async () => {
+    const server = createRuntimeServer('0.1.0');
+    await server.start();
+    const events: unknown[] = [];
+    const unsubscribe = server.subscribeTask((event) => events.push(event));
+    unsubscribe();
+    expect(events).toEqual([]);
+    await server.stop();
+  });
+
   it('handles project commands through the runtime boundary', async () => {
     const root = await mkdtemp(join(tmpdir(), 'idle-runtime-project-'));
     temporaryPaths.push(root);
