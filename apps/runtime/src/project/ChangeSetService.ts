@@ -59,7 +59,7 @@ export class ChangeSetService {
         return {
           path: change.path,
           operation: change.operation,
-          oldContent: current,
+          oldContent: change.operation === 'create' ? null : current,
           newContent: next,
           additions: Math.max(0, lineCount(next) - lineCount(current)),
           deletions: Math.max(0, lineCount(current) - lineCount(next)),
