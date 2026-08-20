@@ -1,0 +1,28 @@
+name: Windows Package
+
+on:
+  push:
+    branches: [main, 'feat/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  package-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm package:windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: idle-windows-installer
+          path: apps/desktop/release/*.exe
+          if-no-files-found: error
