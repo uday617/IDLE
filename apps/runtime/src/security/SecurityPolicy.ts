@@ -29,9 +29,11 @@ export class SecurityPolicy {
     if (!trimmed) throw new Error('Command cannot be empty');
     if (SHELL_CONTROL.test(trimmed)) throw new Error('Shell control characters are not allowed');
 
-    const executable = trimmed.split(/\s+/)[0].toLowerCase();
-    if (!policy.allowedCommands.map((value) => value.toLowerCase()).includes(executable)) {
-      throw new Error(`Command is not allowed: ${executable}`);
+    const executable = trimmed.split(/\s+/)[0];
+    if (!executable) throw new Error('Command cannot be empty');
+
+    if (!policy.allowedCommands.map((value) => value.toLowerCase()).includes(executable.toLowerCase())) {
+      throw new Error(`Command is not allowed: ${executable.toLowerCase()}`);
     }
 
     const blocked = [...DEFAULT_BLOCKED_COMMANDS, ...(policy.blockedCommands ?? [])];
