@@ -8,6 +8,6 @@
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
-    "package:windows": "pnpm dlx esbuild apps/runtime/src/main.ts --bundle --platform=node --format=esm --outfile=apps/desktop/runtime-bundle/main.js && pnpm --filter @idle/desktop build && pnpm dlx electron-builder --win nsis --projectDir apps/desktop --config electron-builder.yml"
+    "package:windows": "pnpm dlx esbuild apps/runtime/src/main.ts --bundle --platform=node --format=esm --outfile=apps/desktop/runtime-bundle/main.js && pnpm --filter @idle/desktop build && pnpm dlx electron-builder --win nsis --projectDir apps/desktop --config apps/desktop/electron-builder.yml"
   }
 }
