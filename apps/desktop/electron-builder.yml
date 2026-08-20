@@ -1,0 +1,26 @@
+appId: com.idle.desktop
+productName: IDLE
+artifactName: IDLE-${version}-${arch}.${ext}
+compression: maximum
+asar: true
+files:
+  - dist/**
+extraResources:
+  - from: runtime-bundle
+    to: runtime
+    filter:
+      - main.js
+directories:
+  output: release
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  executableName: IDLE
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
