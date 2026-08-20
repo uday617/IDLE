@@ -50,17 +50,7 @@ export function createRuntimeServer(version: string): RuntimeServer {
     },
     async submitTask(request) {
       if (!started) throw new Error('Runtime is not started');
-      const result: TaskSubmitResult = { taskId: request.taskId, status: 'pending' };
-      const task: TaskResult = { taskId: request.taskId, status: 'paused', error: 'Execution provider is not connected yet' };
-      tasks.set(request.taskId, task);
-      const event: TaskStatusEvent = {
-        taskId: request.taskId,
-        status: 'paused',
-        timestamp: new Date().toISOString(),
-        message: task.error,
-      };
-      for (const listener of taskListeners) listener(event);
-      return result;
+      return { taskId: request.taskId, status: 'pending' };
     },
     async getTask(taskId) {
       if (!started) throw new Error('Runtime is not started');
