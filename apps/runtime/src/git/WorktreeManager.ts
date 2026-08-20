@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { ProjectService } from '../project/ProjectService.js';
 
 const execGit = promisify(execFile);
@@ -33,9 +33,11 @@ export class WorktreeManager {
 
     const id = randomUUID();
     const branch = `idle/${this.slug(taskId)}/${this.slug(agentId)}-${id.slice(0, 8)}`;
-    const path = join(project.path, '.worktrees', id);
+    // Keep worktrees outside the project checkout so they can never appear as
+    // untracked files in the target repository, regardless of .gitignore state.
+    const path = resolve(project.path, '..', '.idle-worktrees', projectId, id);
 
-    await mkdir(join(project.path, '.worktrees'), { recursive: true });
+    await mkdir(join(resolve(project.path, '..'), '.idle-worktrees', projectId), { recursive: true });
     await this.git(project.path, 'worktree', 'add', '-b', branch, path, 'HEAD');
 
     const worktree: Worktree = { id, projectId, taskId, agentId, path, branch };
