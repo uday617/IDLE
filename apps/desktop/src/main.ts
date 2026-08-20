@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { join } from 'node:path';
+import type { TaskStatusEvent, TaskSubmitRequest } from '@idle/contracts';
 import { RuntimeClient } from './main/runtimeClient.js';
 
 let runtimeClient: RuntimeClient | null = null;
@@ -55,6 +56,22 @@ app.whenReady().then(() => {
 
   ipcMain.handle('project:close', async (_event, projectId: string) => {
     return runtimeClient?.request({ type: 'project.close', projectId }) ?? null;
+  });
+
+  ipcMain.handle('task:submit', async (_event, request: TaskSubmitRequest) => {
+    if (!runtimeClient) throw new Error('Agent runtime is not started');
+    return runtimeClient.submitTask(request);
+  });
+
+  ipcMain.handle('task:get', async (_event, taskId: string) => {
+    if (!runtimeClient) throw new Error('Agent runtime is not started');
+    return runtimeClient.getTask(taskId);
+  });
+
+  runtimeClient?.subscribeTask((event: TaskStatusEvent) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send('task:status', event);
+    }
   });
 
   createWindow();
