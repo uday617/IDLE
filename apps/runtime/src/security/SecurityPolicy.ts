@@ -32,13 +32,13 @@ export class SecurityPolicy {
     const executable = trimmed.split(/\s+/)[0];
     if (!executable) throw new Error('Command cannot be empty');
 
-    if (!policy.allowedCommands.map((value) => value.toLowerCase()).includes(executable.toLowerCase())) {
-      throw new Error(`Command is not allowed: ${executable.toLowerCase()}`);
-    }
-
     const blocked = [...DEFAULT_BLOCKED_COMMANDS, ...(policy.blockedCommands ?? [])];
     if (blocked.some((pattern) => pattern.test(trimmed))) {
       throw new Error('Destructive command is blocked');
+    }
+
+    if (!policy.allowedCommands.map((value) => value.toLowerCase()).includes(executable.toLowerCase())) {
+      throw new Error(`Command is not allowed: ${executable.toLowerCase()}`);
     }
   }
 }
