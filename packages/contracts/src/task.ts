@@ -1,5 +1,5 @@
 import type { TaskId, TaskStatus, ProjectId } from './agent.js';
-import type { ChangeSetReviewResult } from './changes.js';
+import type { ChangeSet, ChangeSetReviewResult } from './changes.js';
 
 export interface Task { id: TaskId; title: string; description: string; status: TaskStatus; }
 export interface TaskSubmitRequest { taskId: TaskId; projectId: ProjectId; prompt: string; }
@@ -11,5 +11,6 @@ export interface TaskResult {
   summary?: string;
   error?: string;
   changeSetId?: string;
+  changeSet?: ChangeSet;
   changeSetReview?: ChangeSetReviewResult;
 }
