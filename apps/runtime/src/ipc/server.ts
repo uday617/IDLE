@@ -1,4 +1,5 @@
 import type { TaskResult, TaskStatusEvent, TaskSubmitRequest, TaskSubmitResult } from '@idle/contracts';
+import { AgentExecutor } from '../agents/AgentExecutor.js';
 import {
   ProjectController,
   type ProjectCommand,
@@ -37,7 +38,14 @@ export function createRuntimeServer(version: string): RuntimeServer {
   const projectController = new ProjectController(projectService, fileService, changeSetService);
   const taskListeners = new Set<(event: TaskStatusEvent) => void>();
   const taskService = new TaskService();
-  const taskRunner = new TaskRunner(taskService, async () => undefined);
+  const agentExecutor = new AgentExecutor(projectService, fileService);
+  const taskRunner = new TaskRunner(taskService, async (request) => {
+    const inspection = await agentExecutor.execute(request);
+    await taskService.checkpoint(request.id, {
+      name: 'agent.inspection',
+      data: inspection,
+    });
+  });
 
   taskRunner.subscribe((event) => {
     const status = toContractStatus(event.status);
@@ -68,7 +76,12 @@ export function createRuntimeServer(version: string): RuntimeServer {
     },
     async submitTask(request) {
       if (!started) throw new Error('Runtime is not started');
-      void taskRunner.submit({ id: request.taskId, checkpoint: { name: 'submitted', data: { projectId: request.projectId, prompt: request.prompt } } });
+      void taskRunner.submit({
+        id: request.taskId,
+        projectId: request.projectId,
+        prompt: request.prompt,
+        checkpoint: { name: 'submitted', data: { projectId: request.projectId, prompt: request.prompt } },
+      });
       return { taskId: request.taskId, status: 'queued' };
     },
     async getTask(taskId) {
