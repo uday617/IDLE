@@ -23,7 +23,7 @@ describe('runtime server', () => {
     await server.start();
     await expect(server.submitTask({ taskId: 'task-ipc-1', projectId: 'project-1', prompt: 'inspect the project' })).resolves.toEqual({
       taskId: 'task-ipc-1',
-      status: 'pending',
+      status: 'queued',
     });
     await expect(server.getTask('task-ipc-1')).resolves.toBeNull();
     await server.stop();
