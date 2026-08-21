@@ -50,7 +50,7 @@ export function createRuntimeServer(version: string): RuntimeServer {
     },
     async submitTask(request) {
       if (!started) throw new Error('Runtime is not started');
-      return { taskId: request.taskId, status: 'pending' };
+      return { taskId: request.taskId, status: 'queued' };
     },
     async getTask(taskId) {
       if (!started) throw new Error('Runtime is not started');
