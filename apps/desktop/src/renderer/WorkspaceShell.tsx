@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { ProjectId, TaskId, TaskStatus, TaskStatusEvent } from '@idle/contracts';
 import { Editor } from './Editor.js';
 import { FileExplorer } from './FileExplorer.js';
 import { getWorkspacePanelTitle } from './workspaceModel.js';
@@ -18,12 +19,37 @@ const emptyAgentPanel = getAgentPanelState([]);
 
 type InputMode = 'task' | 'command';
 
+const taskStatusLabel: Record<TaskStatus, string> = {
+  queued: 'Queued',
+  planning: 'Planning',
+  running: 'Running',
+  verifying: 'Verifying',
+  completed: 'Completed',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+  paused: 'Paused',
+};
+
 export function WorkspaceShell() {
   const [state, setState] = useState(initialProjectWorkspaceState);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [taskPrompt, setTaskPrompt] = useState('');
   const [inputMode, setInputMode] = useState<InputMode>('task');
+  const [taskId, setTaskId] = useState<TaskId | null>(null);
+  const [taskStatus, setTaskStatus] = useState<TaskStatus | null>(null);
+  const [taskError, setTaskError] = useState<string | null>(null);
   const taskInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    return window.idle.tasks.subscribe((event: TaskStatusEvent) => {
+      setTaskId((currentTaskId) => {
+        if (currentTaskId !== event.taskId) return currentTaskId;
+        setTaskStatus(event.status);
+        setTaskError(event.message ?? null);
+        return currentTaskId;
+      });
+    });
+  }, []);
 
   const openProject = async () => {
     setState(beginProjectOpen());
@@ -43,10 +69,32 @@ export function WorkspaceShell() {
     taskInputRef.current?.focus();
   };
 
+  const submitTask = async () => {
+    const prompt = taskPrompt.trim();
+    if (!state.project || !prompt || inputMode !== 'task') return;
+
+    const nextTaskId = crypto.randomUUID() as TaskId;
+    setTaskId(nextTaskId);
+    setTaskStatus('queued');
+    setTaskError(null);
+
+    try {
+      await window.idle.tasks.submit({
+        taskId: nextTaskId,
+        projectId: state.project.id as ProjectId,
+        prompt,
+      });
+      setTaskPrompt('');
+    } catch (cause) {
+      setTaskStatus('failed');
+      setTaskError(cause instanceof Error ? cause.message : 'Unable to submit task');
+    }
+  };
+
   const workspaceStatus = getWorkspaceStatus({
     projectPath: state.project?.path ?? null,
     dirty: false,
-    agentCount: 0,
+    agentCount: taskStatus ? 1 : 0,
   });
 
   return (
@@ -94,6 +142,9 @@ export function WorkspaceShell() {
             ref={taskInputRef}
             value={taskPrompt}
             onChange={(event) => setTaskPrompt(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void submitTask();
+            }}
             placeholder={
               !state.project
                 ? 'Open a project to start a task'
@@ -104,9 +155,13 @@ export function WorkspaceShell() {
             disabled={!state.project}
             aria-label={inputMode === 'command' ? 'Command search' : 'Quick Task'}
           />
-          <kbd>{inputMode === 'command' ? 'Ctrl Shift P' : 'Ctrl K'}</kbd>
+          <kbd>{inputMode === 'command' ? 'Ctrl Shift P' : 'Enter'}</kbd>
         </label>
-        <span className="taskbar-hint">AI changes will be reviewed before they are applied.</span>
+        <span className="taskbar-hint">
+          {taskStatus && taskId
+            ? `Task ${taskId.slice(0, 8)} · ${taskStatusLabel[taskStatus]}${taskError ? ` · ${taskError}` : ''}`
+            : 'AI changes will be reviewed before they are applied.'}
+        </span>
       </div>
 
       <section className="workspace-grid">
@@ -143,16 +198,27 @@ export function WorkspaceShell() {
           <div className="panel-header">
             <div>
               <h2>{emptyAgentPanel.heading}</h2>
-              <span className="panel-subtitle">{emptyAgentPanel.summary}</span>
+              <span className="panel-subtitle">
+                {taskStatus ? taskStatusLabel[taskStatus] : emptyAgentPanel.summary}
+              </span>
             </div>
-            <span className="agent-count">0</span>
+            <span className="agent-count">{taskStatus ? '1' : '0'}</span>
           </div>
           <div className="agent-empty-state">
-            <div className="agent-orbit" aria-hidden="true">✦</div>
-            <strong>Ready for agent work</strong>
-            <p>Start a Quick Task and IDLE will show planning, execution, verification, and review here.</p>
+            <div className="agent-orbit" aria-hidden="true">{taskStatus ? '●' : '✦'}</div>
+            {taskStatus ? (
+              <>
+                <strong>{taskStatusLabel[taskStatus]}</strong>
+                <p>{taskError ?? 'Task lifecycle is connected to the runtime.'}</p>
+              </>
+            ) : (
+              <>
+                <strong>Ready for agent work</strong>
+                <p>Start a Quick Task and IDLE will show planning, execution, verification, and review here.</p>
+              </>
+            )}
             <button className="secondary-button" type="button" onClick={() => focusInput('task')} disabled={!state.project}>
-              Start a task
+              {taskStatus ? 'Start another task' : 'Start a task'}
             </button>
           </div>
         </aside>
@@ -168,7 +234,7 @@ export function WorkspaceShell() {
           <span>TypeScript</span>
           <span>UTF-8</span>
         </div>
-        <span className="status-ready">Ready</span>
+        <span className="status-ready">{taskStatus ? taskStatusLabel[taskStatus] : 'Ready'}</span>
       </footer>
     </main>
   );
