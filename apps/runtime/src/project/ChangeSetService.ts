@@ -1,5 +1,5 @@
 import { applyChangeSet, type ChangeFileState } from '@idle/core';
-import type { ChangeSet } from '@idle/contracts';
+import type { ChangeSet, ChangeSetValidationError } from '@idle/contracts';
 import type { FileService } from './FileService.js';
 import type { ProjectService } from './ProjectService.js';
 
@@ -20,6 +20,13 @@ export interface ChangeSetPreviewFile {
 export interface ChangeSetPreviewResult {
   id: string;
   files: ChangeSetPreviewFile[];
+}
+
+export interface ChangeSetReviewResult {
+  id: string;
+  valid: boolean;
+  errors: ChangeSetValidationError[];
+  preview: ChangeSetPreviewResult | null;
 }
 
 function lineCount(content: string | null): number {
@@ -43,14 +50,8 @@ export class ChangeSetService {
     return states;
   }
 
-  async preview(projectId: string, changeSet: ChangeSet): Promise<ChangeSetPreviewResult> {
-    const project = await this.projects.get(projectId);
-    if (!project) throw new Error(`Project not found: ${projectId}`);
-
-    const states = await this.readStates(projectId, changeSet);
-    const result = applyChangeSet(changeSet, states);
+  private buildPreview(changeSet: ChangeSet, states: Map<string, ChangeFileState>, result: ReturnType<typeof applyChangeSet>): ChangeSetPreviewResult {
     const changesByPath = new Map(result.changes.map((change) => [change.path, change]));
-
     return {
       id: changeSet.id,
       files: changeSet.changes.map((change) => {
@@ -66,6 +67,33 @@ export class ChangeSetService {
         };
       }),
     };
+  }
+
+  async review(projectId: string, changeSet: ChangeSet): Promise<ChangeSetReviewResult> {
+    const project = await this.projects.get(projectId);
+    if (!project) throw new Error(`Project not found: ${projectId}`);
+
+    const states = await this.readStates(projectId, changeSet);
+    try {
+      const result = applyChangeSet(changeSet, states);
+      return { id: changeSet.id, valid: true, errors: [], preview: this.buildPreview(changeSet, states, result) };
+    } catch (error) {
+      const errors = (error as { errors?: ChangeSetValidationError[] }).errors ?? [{
+        path: '',
+        code: 'BASE_MISMATCH' as const,
+        message: error instanceof Error ? error.message : String(error),
+      }];
+      return { id: changeSet.id, valid: false, errors, preview: null };
+    }
+  }
+
+  async preview(projectId: string, changeSet: ChangeSet): Promise<ChangeSetPreviewResult> {
+    const project = await this.projects.get(projectId);
+    if (!project) throw new Error(`Project not found: ${projectId}`);
+
+    const states = await this.readStates(projectId, changeSet);
+    const result = applyChangeSet(changeSet, states);
+    return this.buildPreview(changeSet, states, result);
   }
 
   async apply(projectId: string, changeSet: ChangeSet): Promise<ChangeSetApplyResult> {
