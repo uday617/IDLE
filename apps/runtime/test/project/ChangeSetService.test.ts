@@ -63,4 +63,33 @@ describe('ChangeSetService', () => {
     await expect(service.preview(project.id, changeSet)).rejects.toMatchObject({ errors: [{ path: 'a.txt', code: 'BASE_MISMATCH' }] });
     await expect(readFile(join(root, 'a.txt'), 'utf8')).resolves.toBe('one\n');
   });
+
+  it('reviews a valid changeset with a preview and does not mutate files', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'idle-change-set-review-'));
+    await writeFile(join(root, 'a.txt'), 'one\n');
+    const { project, service } = await serviceFor(root);
+    const changeSet: ChangeSet = { id: 'review-1', description: 'review', changes: [
+      { operation: 'modify', path: 'a.txt', baseContent: 'one\n', hunks: [{ oldStart: 1, oldLines: ['one'], newLines: ['ONE'] }] },
+    ] };
+
+    await expect(service.review(project.id, changeSet)).resolves.toMatchObject({
+      id: 'review-1', valid: true, errors: [], preview: { id: 'review-1' },
+    });
+    await expect(readFile(join(root, 'a.txt'), 'utf8')).resolves.toBe('one\n');
+  });
+
+  it('returns validation errors for a stale changeset without mutating files', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'idle-change-set-review-'));
+    await writeFile(join(root, 'a.txt'), 'one\n');
+    const { project, service } = await serviceFor(root);
+    const changeSet: ChangeSet = { id: 'review-2', description: 'stale review', changes: [
+      { operation: 'modify', path: 'a.txt', baseContent: 'stale\n', hunks: [{ oldStart: 1, oldLines: ['stale'], newLines: ['new'] }] },
+    ] };
+
+    await expect(service.review(project.id, changeSet)).resolves.toMatchObject({
+      id: 'review-2', valid: false, preview: null,
+      errors: [{ path: 'a.txt', code: 'BASE_MISMATCH' }],
+    });
+    await expect(readFile(join(root, 'a.txt'), 'utf8')).resolves.toBe('one\n');
+  });
 });
