@@ -32,8 +32,8 @@ describe('AgentExecutor', () => {
     });
     expect(result.topLevelEntries).toEqual([
       { name: 'src', kind: 'directory' },
-      { name: 'README.md', kind: 'file' },
       { name: 'package.json', kind: 'file' },
+      { name: 'README.md', kind: 'file' },
     ]);
   });
 
