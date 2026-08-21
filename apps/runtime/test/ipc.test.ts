@@ -18,14 +18,25 @@ describe('runtime server', () => {
     await server.stop();
   });
 
-  it('accepts a task through the runtime task boundary without fabricating execution', async () => {
+  it('runs a submitted task through the runtime lifecycle', async () => {
     const server = createRuntimeServer('0.1.0');
     await server.start();
+    const events: string[] = [];
+    const unsubscribe = server.subscribeTask((event) => events.push(event.status));
+
     await expect(server.submitTask({ taskId: 'task-ipc-1', projectId: 'project-1', prompt: 'inspect the project' })).resolves.toEqual({
       taskId: 'task-ipc-1',
       status: 'queued',
     });
-    await expect(server.getTask('task-ipc-1')).resolves.toBeNull();
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await expect(server.getTask('task-ipc-1')).resolves.toMatchObject({
+      taskId: 'task-ipc-1',
+      status: 'completed',
+    });
+    expect(events).toEqual(['queued', 'running', 'completed']);
+
+    unsubscribe();
     await server.stop();
   });
 
