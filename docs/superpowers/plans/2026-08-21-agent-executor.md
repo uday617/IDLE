@@ -4,7 +4,7 @@
 
 **Goal:** Add a safe, deterministic, read-only AgentExecutor boundary to the existing TaskRunner without allowing automatic file mutation or shell execution.
 
-**Architecture:** TaskRunner delegates task execution to an AgentExecutor. AgentExecutor validates the task request, inspects the selected project through existing ProjectService/FileService boundaries, and returns a deterministic execution result suitable for future ChangeSet generation. The first slice does not call an external model, execute shell commands, or modify project files.
+**Architecture:** TaskRunner delegates task execution to an AgentExecutor. AgentExecutor validates the task request, inspects the selected project through existing ProjectService/FileService boundaries, and persists a deterministic inspection checkpoint. The first slice does not call an external model, execute shell commands, or modify project files.
 
 **Tech Stack:** TypeScript, Node.js, Vitest, existing runtime ProjectService/FileService/TaskRunner.
 
@@ -20,46 +20,33 @@
 
 ---
 
-### Task 1: Define executor contract and failing tests
+### Task 1: Define executor contract and tests
 
 **Files:**
 - Create: `apps/runtime/src/agents/AgentExecutor.ts`
 - Test: `apps/runtime/test/agent/AgentExecutor.test.ts`
 
-**Interfaces:**
-- Consumes: `TaskRunRequest`, project id, prompt, and a read-only project inspector.
-- Produces: `AgentExecutionResult` containing task id, project id, prompt, and an inspection summary.
-
-- [ ] **Step 1: Write tests for successful inspection and invalid project input.**
-- [ ] **Step 2: Run the focused test and verify it fails because the executor does not exist.**
-- [ ] **Step 3: Implement the minimal typed executor contract and deterministic inspection behavior.**
-- [ ] **Step 4: Run the focused test and verify it passes.**
-- [ ] **Step 5: Commit with `feat: add safe agent executor boundary`.**
+- [x] Define the executor result and read-only inspection behavior.
+- [x] Add focused tests for successful inspection and invalid project input.
+- [x] Verify deterministic top-level entry ordering and package metadata extraction.
 
 ### Task 2: Wire executor into runtime
 
 **Files:**
+- Modify: `apps/runtime/src/tasks/TaskRunner.ts`
 - Modify: `apps/runtime/src/ipc/server.ts`
-- Modify: `apps/runtime/src/tasks/TaskRunner.ts` only if the executor signature needs the task context
 - Test: `apps/runtime/test/ipc.test.ts`
 
-**Interfaces:**
-- Consumes: `AgentExecutor.execute()` from TaskRunner's existing executor callback.
-- Produces: task completion only after the executor finishes successfully; failure status when execution rejects.
+- [x] Pass project context and prompt through TaskRunner to the executor.
+- [x] Construct AgentExecutor from the existing ProjectService and FileService.
+- [x] Persist an `agent.inspection` checkpoint after successful inspection.
+- [x] Exercise task submission through IPC using a real temporary project.
+- [x] Preserve queued/running/completed status events.
 
-- [ ] **Step 1: Add a failing IPC test proving task submission invokes project inspection through the executor.**
-- [ ] **Step 2: Run the focused IPC test and verify the new assertion fails.**
-- [ ] **Step 3: Construct `AgentExecutor` with existing project/file services and delegate from `TaskRunner`.**
-- [ ] **Step 4: Run the focused IPC and agent tests and verify they pass.**
-- [ ] **Step 5: Commit with `feat: wire agent executor into runtime tasks`.**
+### Task 3: Verification and CI
 
-### Task 3: Full verification and CI
-
-**Files:**
-- No source changes unless verification exposes a real defect.
-
-- [ ] **Step 1: Run `pnpm typecheck`.**
-- [ ] **Step 2: Run `pnpm test`.**
-- [ ] **Step 3: Run the Windows packaging workflow through the existing CI pipeline.**
-- [ ] **Step 4: Open a PR only after all required checks are green.**
-- [ ] **Step 5: Merge only after the PR checks are green; verify `main` afterward.**
+- [x] Add implementation and focused tests.
+- [ ] Run `pnpm typecheck` in CI.
+- [ ] Run `pnpm test` in CI.
+- [ ] Run Windows packaging in CI.
+- [ ] Merge only after all required checks are green.
