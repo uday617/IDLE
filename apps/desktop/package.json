@@ -14,6 +14,7 @@
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@idle/contracts": "workspace:*",
     "@monaco-editor/react": "^4.7.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
