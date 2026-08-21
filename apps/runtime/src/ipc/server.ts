@@ -1,5 +1,7 @@
 import type { TaskResult, TaskStatusEvent, TaskSubmitRequest, TaskSubmitResult } from '@idle/contracts';
+import { AgentChangeSetBuilder } from '../agents/AgentChangeSetBuilder.js';
 import { AgentExecutor } from '../agents/AgentExecutor.js';
+import { AgentPlanner } from '../agents/AgentPlanner.js';
 import {
   ProjectController,
   type ProjectCommand,
@@ -39,11 +41,25 @@ export function createRuntimeServer(version: string): RuntimeServer {
   const taskListeners = new Set<(event: TaskStatusEvent) => void>();
   const taskService = new TaskService();
   const agentExecutor = new AgentExecutor(projectService, fileService);
+  const agentPlanner = new AgentPlanner();
+  const changeSetBuilder = new AgentChangeSetBuilder();
   const taskRunner = new TaskRunner(taskService, async (request) => {
     const inspection = await agentExecutor.execute(request);
     await taskService.checkpoint(request.id, {
       name: 'agent.inspection',
       data: inspection,
+    });
+
+    const plan = agentPlanner.createPlan(inspection);
+    await taskService.checkpoint(request.id, {
+      name: 'agent.plan',
+      data: plan,
+    });
+
+    const changeSet = changeSetBuilder.createChangeSet(plan);
+    await taskService.checkpoint(request.id, {
+      name: 'agent.changeset',
+      data: changeSet,
     });
   });
 
@@ -89,11 +105,16 @@ export function createRuntimeServer(version: string): RuntimeServer {
       const task = taskRunner.get(taskId);
       if (!task) return null;
       if (task.status !== 'completed' && task.status !== 'failed') return null;
-      return {
+      const result: TaskResult = {
         taskId: task.id as TaskResult['taskId'],
         status: task.status,
         ...(task.error ? { error: task.error } : {}),
       };
+      if (task.checkpoint?.name === 'agent.changeset') {
+        const checkpoint = task.checkpoint.data as { id?: unknown } | undefined;
+        if (typeof checkpoint?.id === 'string') result.changeSetId = checkpoint.id;
+      }
+      return result;
     },
     subscribeTask(listener) {
       taskListeners.add(listener);
