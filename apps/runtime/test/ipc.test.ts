@@ -18,7 +18,7 @@ describe('runtime server', () => {
     await server.stop();
   });
 
-  it('runs a submitted task through the runtime lifecycle and agent inspection', async () => {
+  it('runs a submitted task through executor, planner, and changeset lifecycle', async () => {
     const root = await mkdtemp(join(tmpdir(), 'idle-runtime-task-'));
     temporaryPaths.push(root);
     await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'ipc-agent-project' }));
@@ -38,6 +38,7 @@ describe('runtime server', () => {
     await expect(server.getTask('task-ipc-1')).resolves.toMatchObject({
       taskId: 'task-ipc-1',
       status: 'completed',
+      changeSetId: 'changeset-task-ipc-1',
     });
     expect(events).toEqual(['queued', 'running', 'completed']);
 
