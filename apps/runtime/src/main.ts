@@ -2,7 +2,7 @@ import { createInterface } from 'node:readline';
 import { RUNTIME_VERSION } from './index.js';
 import { createRuntimeServer } from './ipc/server.js';
 import type { ProjectCommand } from './project/ProjectController.js';
-import type { TaskStatusEvent, TaskSubmitRequest } from '@idle/contracts';
+import type { ProjectId, TaskId, TaskStatusEvent, TaskSubmitRequest } from '@idle/contracts';
 
 const server = createRuntimeServer(RUNTIME_VERSION);
 await server.start();
@@ -39,8 +39,8 @@ lines.on('line', async (line) => {
       result = server.health();
     } else if (request.type === 'task.submit') {
       const taskRequest: TaskSubmitRequest = {
-        taskId: request.taskId ?? '',
-        projectId: request.projectId ?? '',
+        taskId: request.taskId as TaskId,
+        projectId: request.projectId as ProjectId,
         prompt: request.prompt ?? '',
       };
       result = await server.submitTask(taskRequest);
