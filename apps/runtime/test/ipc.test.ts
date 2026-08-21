@@ -18,13 +18,18 @@ describe('runtime server', () => {
     await server.stop();
   });
 
-  it('runs a submitted task through the runtime lifecycle', async () => {
+  it('runs a submitted task through the runtime lifecycle and agent inspection', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'idle-runtime-task-'));
+    temporaryPaths.push(root);
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'ipc-agent-project' }));
+
     const server = createRuntimeServer('0.1.0');
     await server.start();
+    const project = await server.handleProject({ type: 'project.open', path: root });
     const events: string[] = [];
     const unsubscribe = server.subscribeTask((event) => events.push(event.status));
 
-    await expect(server.submitTask({ taskId: 'task-ipc-1', projectId: 'project-1', prompt: 'inspect the project' })).resolves.toEqual({
+    await expect(server.submitTask({ taskId: 'task-ipc-1', projectId: project.id, prompt: 'inspect the project' })).resolves.toEqual({
       taskId: 'task-ipc-1',
       status: 'queued',
     });
