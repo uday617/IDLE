@@ -7,6 +7,8 @@ import {
 import { ChangeSetService } from '../project/ChangeSetService.js';
 import { FileService } from '../project/FileService.js';
 import { ProjectService } from '../project/ProjectService.js';
+import { TaskRunner, type TaskStatusEvent as RuntimeTaskStatusEvent } from '../tasks/TaskRunner.js';
+import { TaskService } from '../tasks/TaskService.js';
 
 export interface RuntimeHealth {
   status: 'ok';
@@ -23,6 +25,10 @@ export interface RuntimeServer {
   subscribeTask(listener: (event: TaskStatusEvent) => void): () => void;
 }
 
+function toContractStatus(status: RuntimeTaskStatusEvent['status']): TaskStatusEvent['status'] {
+  return status === 'pending' ? 'queued' : status;
+}
+
 export function createRuntimeServer(version: string): RuntimeServer {
   let started = false;
   const projectService = new ProjectService();
@@ -30,7 +36,19 @@ export function createRuntimeServer(version: string): RuntimeServer {
   const changeSetService = new ChangeSetService(projectService, fileService);
   const projectController = new ProjectController(projectService, fileService, changeSetService);
   const taskListeners = new Set<(event: TaskStatusEvent) => void>();
-  const tasks = new Map<string, TaskResult>();
+  const taskService = new TaskService();
+  const taskRunner = new TaskRunner(taskService, async () => undefined);
+
+  taskRunner.subscribe((event) => {
+    const status = toContractStatus(event.status);
+    const contractEvent: TaskStatusEvent = {
+      taskId: event.taskId as TaskStatusEvent['taskId'],
+      status,
+      timestamp: event.timestamp,
+      ...(event.error ? { message: event.error } : {}),
+    };
+    for (const listener of taskListeners) listener(contractEvent);
+  });
 
   return {
     async start() {
@@ -50,11 +68,19 @@ export function createRuntimeServer(version: string): RuntimeServer {
     },
     async submitTask(request) {
       if (!started) throw new Error('Runtime is not started');
+      void taskRunner.submit({ id: request.taskId, checkpoint: { name: 'submitted', data: { projectId: request.projectId, prompt: request.prompt } } });
       return { taskId: request.taskId, status: 'queued' };
     },
     async getTask(taskId) {
       if (!started) throw new Error('Runtime is not started');
-      return tasks.get(taskId) ?? null;
+      const task = taskRunner.get(taskId);
+      if (!task) return null;
+      if (task.status !== 'completed' && task.status !== 'failed') return null;
+      return {
+        taskId: task.id as TaskResult['taskId'],
+        status: task.status,
+        ...(task.error ? { error: task.error } : {}),
+      };
     },
     subscribeTask(listener) {
       taskListeners.add(listener);
