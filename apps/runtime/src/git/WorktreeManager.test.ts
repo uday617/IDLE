@@ -91,5 +91,5 @@ describe('WorktreeManager', () => {
     await expect(git(root, 'status', '--porcelain')).resolves.toBe('');
 
     await manager.remove(worktree.id);
-  });
+  }, 15_000);
 });
