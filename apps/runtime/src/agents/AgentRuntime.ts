@@ -24,7 +24,7 @@ const DEFAULT_MAX_TURNS = 8;
 
 export class AgentRuntime {
   private readonly maxTurns: number;
-  private readonly systemPrompt?: string;
+  private readonly systemPrompt: string | undefined;
 
   constructor(
     private readonly provider: LLMProvider,
