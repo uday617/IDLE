@@ -12,7 +12,7 @@ export interface AgentProposalRequest {
 }
 
 const CREATE_FILE_PATTERN = /Create file\s+["']([^"']+)["']\s+with content:\s*\n([\s\S]*?)(?=\nCreate file\s+["'][^"']+["']\s+with content:\s*\n|\nReplace line\s+["'][^"']+["']\s+with\s+["'][^"']+["']\s+in file\s+["'][^"']+["']|$)/gi;
-const REPLACE_LINE_PATTERN = /Replace line\s+["']([^"']*)["']\s+with\s+["']([^"']*)["']\s+in file\s+["']([^"']+)["']/gi;
+const REPLACE_LINE_PATTERN = /Replace line\s+["']([^"']*)["']\s+with\s+["']([^"']*)["']\s+in file\s+["'][^"']+["']/gi;
 
 function assertSafePath(path: string): void {
   const normalized = path.replaceAll('\\', '/');
@@ -49,6 +49,17 @@ function createModifyChange(file: AgentProposalFile, oldLine: string, newLine: s
       },
     ],
   };
+}
+
+export function extractReferencedFilePaths(goal: string): string[] {
+  const paths = new Set<string>();
+  for (const match of goal.matchAll(REPLACE_LINE_PATTERN)) {
+    const path = match[3]?.trim();
+    if (!path) continue;
+    assertSafePath(path);
+    paths.add(path);
+  }
+  return [...paths];
 }
 
 export class AgentProposalEngine {
