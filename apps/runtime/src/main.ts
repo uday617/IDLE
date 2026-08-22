@@ -1,8 +1,9 @@
 import { createInterface } from 'node:readline';
 import { RUNTIME_VERSION } from './index.js';
 import { createRuntimeServer } from './ipc/server.js';
+import type { AgentProposalFile } from './agents/AgentProposalEngine.js';
+import type { FailureContext, ProjectId, TaskId, TaskStatusEvent, TaskSubmitRequest } from '@idle/contracts';
 import type { ProjectCommand } from './project/ProjectController.js';
-import type { ProjectId, TaskId, TaskStatusEvent, TaskSubmitRequest } from '@idle/contracts';
 
 const taskStorePath = process.env.IDLE_TASK_STORE_PATH;
 const server = createRuntimeServer(
@@ -21,11 +22,14 @@ interface RuntimeRequest {
     | 'file.list'
     | 'file.read'
     | 'task.submit'
-    | 'task.get';
+    | 'task.get'
+    | 'task.repair';
   path?: string;
   projectId?: string;
   taskId?: string;
   prompt?: string;
+  failure?: FailureContext;
+  files?: readonly AgentProposalFile[];
 }
 
 const lines = createInterface({ input: process.stdin });
@@ -50,6 +54,9 @@ lines.on('line', async (line) => {
       result = await server.submitTask(taskRequest);
     } else if (request.type === 'task.get') {
       result = await server.getTask(request.taskId ?? '');
+    } else if (request.type === 'task.repair') {
+      if (!request.taskId || !request.failure) throw new Error('task.repair requires taskId and failure');
+      result = await server.repairTask(request.taskId, request.failure, request.files ?? []);
     } else {
       const command: ProjectCommand =
         request.type === 'project.open'
