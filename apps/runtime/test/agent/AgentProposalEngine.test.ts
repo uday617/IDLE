@@ -52,4 +52,65 @@ describe('AgentProposalEngine', () => {
       { operation: 'create', path: 'two.txt', baseContent: null, content: 'two' },
     ]);
   });
+
+  it('turns an explicit line replacement into a modify change using the inspected base', () => {
+    const files = [{ path: 'src/example.txt', content: 'first\nold value\nlast\n' }];
+
+    const changeSet = new AgentProposalEngine().propose({
+      taskId: 'task-4',
+      goal: 'Replace line "old value" with "new value" in file "src/example.txt"',
+      files,
+    });
+
+    expect(changeSet.changes).toEqual([
+      {
+        operation: 'modify',
+        path: 'src/example.txt',
+        baseContent: 'first\nold value\nlast\n',
+        hunks: [
+          {
+            oldStart: 2,
+            oldLines: ['old value'],
+            newLines: ['new value'],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('rejects a modify proposal when the inspected file is missing', () => {
+    expect(() =>
+      new AgentProposalEngine().propose({
+        taskId: 'task-5',
+        goal: 'Replace line "old" with "new" in file "missing.txt"',
+        files: [],
+      }),
+    ).toThrow('Inspected file not found: missing.txt');
+  });
+
+  it('does not mutate the inspected file snapshot', () => {
+    const files = [{ path: 'src/example.txt', content: 'old value' }];
+    const before = structuredClone(files);
+
+    new AgentProposalEngine().propose({
+      taskId: 'task-6',
+      goal: 'Replace line "old value" with "new value" in file "src/example.txt"',
+      files,
+    });
+
+    expect(files).toEqual(before);
+  });
+
+  it('returns no proposal for unsupported goals', () => {
+    const result = new AgentProposalEngine().propose({
+      taskId: 'task-7',
+      goal: 'inspect the project and make it better',
+    });
+
+    expect(result).toEqual({
+      id: 'proposal-task-7',
+      description: 'inspect the project and make it better',
+      changes: [],
+    });
+  });
 });
