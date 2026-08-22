@@ -248,7 +248,9 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
           checkId: options.repairVerification.checkId ?? 'repair-verification',
           attempt: Math.min(task.repairAttempts + 1, 3),
           previousAttempts: task.latestFailure ? [task.latestFailure] : [],
-          affectedPaths: options.repairVerification.affectedPaths,
+          ...(options.repairVerification.affectedPaths
+            ? { affectedPaths: options.repairVerification.affectedPaths }
+            : {}),
         });
       }
       await taskService.checkpoint(taskId, {
