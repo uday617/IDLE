@@ -71,7 +71,7 @@ describe('runtime server', () => {
       status: 'completed',
       changeSetId: 'changeset-task-proposal-1',
       changeSet: {
-        id: 'proposal-task-proposal-1',
+        id: 'changeset-task-proposal-1',
         description: 'Replace line "hello" with "hello world" in file "hello.txt"',
         changes: [
           {
