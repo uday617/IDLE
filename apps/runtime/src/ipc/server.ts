@@ -1,4 +1,4 @@
-import type { ChangeSet, TaskResult, TaskStatusEvent, TaskSubmitRequest, TaskSubmitResult } from '@idle/contracts';
+import type { ChangeSet, FailureContext, TaskResult, TaskStatusEvent, TaskSubmitRequest, TaskSubmitResult } from '@idle/contracts';
 import { AgentChangeSetBuilder } from '../agents/AgentChangeSetBuilder.js';
 import { AgentExecutor } from '../agents/AgentExecutor.js';
 import { AgentPlanner } from '../agents/AgentPlanner.js';
@@ -7,6 +7,10 @@ import { AgentRuntime } from '../agents/AgentRuntime.js';
 import { createConfiguredAgentProvider } from '../agents/llm/createConfiguredProvider.js';
 import { createAgentWorkspaceProposalBuffer, createAgentWorkspaceTools } from '../agents/tools/AgentWorkspaceTools.js';
 import { ToolRegistry } from '../agents/tools/ToolRegistry.js';
+import { RepairAgent } from '../agents/RepairAgent.js';
+import { RepairCoordinator } from '../agents/RepairCoordinator.js';
+import type { RepairDecision } from '../agents/RepairLoop.js';
+import type { AgentProposalFile } from '../agents/AgentProposalEngine.js';
 import { ProjectController, type ProjectCommand, type ProjectCommandResult } from '../project/ProjectController.js';
 import { ChangeSetService } from '../project/ChangeSetService.js';
 import { FileService } from '../project/FileService.js';
@@ -15,6 +19,8 @@ import { TaskRunner, type TaskStatusEvent as RuntimeTaskStatusEvent } from '../t
 import { TaskService } from '../tasks/TaskService.js';
 
 export interface RuntimeHealth { status: 'ok'; version: string; }
+export type RepairVerifier = (taskId: string, projectId: string, changeSet: ChangeSet) => Promise<FailureContext | null>;
+
 export interface RuntimeServer {
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -22,11 +28,15 @@ export interface RuntimeServer {
   handleProject(command: ProjectCommand): Promise<ProjectCommandResult>;
   submitTask(request: TaskSubmitRequest): Promise<TaskSubmitResult>;
   getTask(taskId: string): Promise<TaskResult | null>;
+  repairTask(taskId: string, failure: FailureContext, files?: readonly AgentProposalFile[]): Promise<RepairDecision>;
+  applyRepair(taskId: string, changeSetId: string): Promise<RepairDecision>;
   subscribeTask(listener: (event: TaskStatusEvent) => void): () => void;
 }
 
 export interface RuntimeServerOptions {
   taskStorePath?: string;
+  repairAgent?: RepairAgent;
+  repairVerifier?: RepairVerifier;
 }
 
 const REAL_AGENT_SYSTEM_PROMPT = [
@@ -37,6 +47,13 @@ const REAL_AGENT_SYSTEM_PROMPT = [
   'Do not use shell commands; this agent milestone exposes only workspace inspection and proposal tools.',
   'Prefer the smallest safe change that satisfies the user request.',
   'When the requested work is fully proposed, stop and summarize what you proposed.',
+].join('\n');
+
+const REPAIR_AGENT_SYSTEM_PROMPT = [
+  'You are IDLE repair agent.',
+  'Diagnose the supplied verification failure and propose the smallest safe code change.',
+  'Never apply changes directly.',
+  'Return only a supported ChangeSet proposal description.',
 ].join('\n');
 
 function toContractStatus(status: RuntimeTaskStatusEvent['status']): TaskStatusEvent['status'] {
@@ -58,6 +75,15 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
   const changeSetBuilder = new AgentChangeSetBuilder();
   const agentMode = process.env.IDLE_AGENT_MODE?.trim().toLowerCase() || 'deterministic';
   const llmProvider = agentMode === 'llm' ? createConfiguredAgentProvider() : undefined;
+  const repairAgent = options.repairAgent ?? (llmProvider
+    ? new RepairAgent(new AgentRuntime(llmProvider, new ToolRegistry(), {
+      maxTurns: 4,
+      systemPrompt: REPAIR_AGENT_SYSTEM_PROMPT,
+    }))
+    : undefined);
+  const repairCoordinator = repairAgent
+    ? new RepairCoordinator(taskService, { repairAgent })
+    : undefined;
 
   const taskRunner = new TaskRunner(taskService, async (request) => {
     const inspection = await agentExecutor.execute(request);
@@ -147,7 +173,7 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
         status: task.status,
         ...(task.error ? { error: task.error } : {}),
       };
-      if (task.checkpoint?.name === 'agent.changeset') {
+      if (task.checkpoint?.name === 'agent.changeset' || task.checkpoint?.name === 'repair.changeset') {
         const checkpoint = task.checkpoint.data as { id?: unknown } | undefined;
         if (typeof checkpoint?.id === 'string') {
           result.changeSetId = checkpoint.id;
@@ -159,6 +185,59 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
         }
       }
       return result;
+    },
+    async repairTask(taskId, failure, files = []) {
+      if (!started) throw new Error('Runtime is not started');
+      if (!repairCoordinator) throw new Error('Repair agent is not configured');
+      if (!taskService.get(taskId)) throw new Error(`Unknown task: ${taskId}`);
+
+      repairCoordinator.start(taskId);
+      const decision = await repairCoordinator.onVerificationFailureAndPropose(taskId, failure, files);
+      if (decision.kind === 'await_review') {
+        generatedChangeSets.set(decision.changeSet.id, decision.changeSet);
+        await taskService.checkpoint(taskId, { name: 'repair.changeset', data: decision.changeSet });
+      }
+      return decision;
+    },
+    async applyRepair(taskId, changeSetId) {
+      if (!started) throw new Error('Runtime is not started');
+      if (!options.repairVerifier) throw new Error('Repair verifier is not configured');
+      if (!repairCoordinator) throw new Error('Repair agent is not configured');
+
+      const task = taskService.get(taskId);
+      if (!task) throw new Error(`Unknown task: ${taskId}`);
+      if (task.repairStatus !== 'review') throw new Error(`Task is not awaiting repair review: ${taskId}`);
+
+      const changeSet = generatedChangeSets.get(changeSetId);
+      if (!changeSet) throw new Error(`Unknown repair ChangeSet: ${changeSetId}`);
+      const checkpoint = task.checkpoint?.data as { id?: unknown } | undefined;
+      if (task.checkpoint?.name !== 'repair.changeset' || checkpoint?.id !== changeSetId) {
+        throw new Error(`Repair ChangeSet is not pending review for task: ${taskId}`);
+      }
+      if (!task.projectId) throw new Error(`Task is missing project context: ${taskId}`);
+
+      const applied = await changeSetService.apply(task.projectId, changeSet);
+      await taskService.checkpoint(taskId, { name: 'repair.applied', data: applied });
+
+      const verificationFailure = await options.repairVerifier(taskId, task.projectId, changeSet);
+      await taskService.checkpoint(taskId, {
+        name: 'repair.verification',
+        data: verificationFailure ?? { ok: true },
+      });
+
+      if (verificationFailure) {
+        const nextDecision = await repairCoordinator.onVerificationFailureAndPropose(taskId, {
+          ...verificationFailure,
+          attempt: Math.max(task.repairAttempts + 1, verificationFailure.attempt),
+        });
+        if (nextDecision.kind === 'await_review') {
+          generatedChangeSets.set(nextDecision.changeSet.id, nextDecision.changeSet);
+          await taskService.checkpoint(taskId, { name: 'repair.changeset', data: nextDecision.changeSet });
+        }
+        return nextDecision;
+      }
+
+      return repairCoordinator.onVerificationSuccess(taskId);
     },
     subscribeTask(listener) {
       taskListeners.add(listener);
