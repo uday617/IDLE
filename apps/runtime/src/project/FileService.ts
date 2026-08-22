@@ -80,6 +80,13 @@ export class FileService {
     await this.applyBatch(projectId, writes.map((write) => ({ path: write.path, content: write.content })));
   }
 
+  async restoreBatch(projectId: string, states: Array<{ path: string; state: FileState }>): Promise<void> {
+    await this.applyBatch(projectId, states.map(({ path, state }) => ({
+      path,
+      content: state.exists ? state.content : null,
+    })));
+  }
+
   async applyBatch(projectId: string, operations: FileBatchOperation[]): Promise<void> {
     const project = await this.projects.get(projectId);
     if (!project) throw new Error(`Project not found: ${projectId}`);
