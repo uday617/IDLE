@@ -17,6 +17,7 @@ export interface AgentRunResult {
 
 export interface AgentRuntimeOptions {
   maxTurns?: number;
+  systemPrompt?: string;
 }
 
 const DEFAULT_MAX_TURNS = 8;
@@ -36,7 +37,9 @@ export class AgentRuntime {
   }
 
   async run(request: AgentRunRequest): Promise<AgentRunResult> {
-    const messages: LLMMessage[] = [{ role: 'user', content: request.prompt }];
+    const messages: LLMMessage[] = [];
+    if (this.systemPrompt) messages.push({ role: 'system', content: this.systemPrompt });
+    messages.push({ role: 'user', content: request.prompt });
     const tools = this.tools.definitions();
 
     for (let turn = 1; turn <= this.maxTurns; turn += 1) {
@@ -120,5 +123,9 @@ export class AgentRuntime {
       turns: this.maxTurns,
       error: `Agent reached the maximum turn limit of ${this.maxTurns}`,
     };
+  }
+
+  private get systemPrompt(): string | undefined {
+    return undefined;
   }
 }
