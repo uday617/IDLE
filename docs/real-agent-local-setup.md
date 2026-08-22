@@ -79,3 +79,5 @@ A successful smoke test proves the real local path is wired end-to-end:
 - proposal generation remains review-first.
 
 It does **not** prove that every local model follows the system prompt equally well. Tool-calling quality varies by model, so use a model with reliable function/tool-calling support.
+
+> Final validation note: the real-agent smoke workflow also exercises the conventional `list_roots` workspace tool used by local agents.
