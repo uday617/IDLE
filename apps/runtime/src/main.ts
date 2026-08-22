@@ -4,7 +4,11 @@ import { createRuntimeServer } from './ipc/server.js';
 import type { ProjectCommand } from './project/ProjectController.js';
 import type { ProjectId, TaskId, TaskStatusEvent, TaskSubmitRequest } from '@idle/contracts';
 
-const server = createRuntimeServer(RUNTIME_VERSION);
+const taskStorePath = process.env.IDLE_TASK_STORE_PATH;
+const server = createRuntimeServer(
+  RUNTIME_VERSION,
+  taskStorePath === undefined ? {} : { taskStorePath },
+);
 await server.start();
 
 interface RuntimeRequest {

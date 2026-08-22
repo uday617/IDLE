@@ -11,6 +11,7 @@ export interface TaskCheckpoint {
 export interface TaskRecord {
   id: string;
   projectId?: string;
+  prompt?: string;
   status: TaskStatus;
   checkpoint?: TaskCheckpoint;
   updatedAt: string;
@@ -38,8 +39,14 @@ export class TaskService {
     }
   }
 
-  async create(id: string, projectId?: string): Promise<TaskRecord> {
-    const task: TaskRecord = { id, ...(projectId ? { projectId } : {}), status: 'pending', updatedAt: new Date().toISOString() };
+  async create(id: string, projectId?: string, prompt?: string): Promise<TaskRecord> {
+    const task: TaskRecord = {
+      id,
+      ...(projectId ? { projectId } : {}),
+      ...(prompt !== undefined ? { prompt } : {}),
+      status: 'pending',
+      updatedAt: new Date().toISOString(),
+    };
     this.tasks.set(id, task);
     await this.persist();
     return task;
