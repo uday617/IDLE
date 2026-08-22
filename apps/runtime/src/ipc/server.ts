@@ -1,4 +1,8 @@
 import type { ChangeSet, FailureContext, TaskResult, TaskStatusEvent, TaskSubmitRequest, TaskSubmitResult } from '@idle/contracts';
+import type { CommandPolicy } from '../security/SecurityPolicy.js';
+import { SecurityPolicy } from '../security/SecurityPolicy.js';
+import { SecureCommandExecutor } from '../security/SecureCommandExecutor.js';
+import { CommandRepairVerifier } from '../security/CommandRepairVerifier.js';
 import { AgentChangeSetBuilder } from '../agents/AgentChangeSetBuilder.js';
 import { AgentExecutor } from '../agents/AgentExecutor.js';
 import { AgentPlanner } from '../agents/AgentPlanner.js';
@@ -37,6 +41,12 @@ export interface RuntimeServerOptions {
   taskStorePath?: string;
   repairAgent?: RepairAgent;
   repairVerifier?: RepairVerifier;
+  repairVerification?: {
+    command: string;
+    checkId?: string;
+    policy: CommandPolicy;
+    affectedPaths?: string[];
+  };
 }
 
 const REAL_AGENT_SYSTEM_PROMPT = [
@@ -83,6 +93,9 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
     : undefined);
   const repairCoordinator = repairAgent
     ? new RepairCoordinator(taskService, { repairAgent })
+    : undefined;
+  const commandRepairVerifier = options.repairVerification
+    ? new CommandRepairVerifier(new SecureCommandExecutor(SecurityPolicy, options.repairVerification.policy))
     : undefined;
 
   const taskRunner = new TaskRunner(taskService, async (request) => {
@@ -201,7 +214,7 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
     },
     async applyRepair(taskId, changeSetId) {
       if (!started) throw new Error('Runtime is not started');
-      if (!options.repairVerifier) throw new Error('Repair verifier is not configured');
+      if (!options.repairVerifier && !commandRepairVerifier) throw new Error('Repair verifier is not configured');
       if (!repairCoordinator) throw new Error('Repair agent is not configured');
 
       const task = taskService.get(taskId);
@@ -219,7 +232,37 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
       const applied = await changeSetService.apply(task.projectId, changeSet);
       await taskService.checkpoint(taskId, { name: 'repair.applied', data: applied });
 
-      const verificationFailure = await options.repairVerifier(taskId, task.projectId, changeSet);
+      let verificationFailure: FailureContext | null;
+      if (options.repairVerifier) {
+        verificationFailure = await options.repairVerifier(taskId, task.projectId, changeSet);
+      } else {
+        const project = await projectService.get(task.projectId);
+        if (!project || !commandRepairVerifier || !options.repairVerification) {
+          throw new Error(`Project verification context is unavailable: ${taskId}`);
+        }
+        verificationFailure = await commandRepairVerifier.verify({
+          taskId,
+          projectId: task.projectId,
+          cwd: project.path,
+          command: options.repairVerification.command,
+          checkId: options.repairVerification.checkId ?? 'repair-verification',
+          attempt: Math.min(task.repairAttempts + 1, 3),
+          previousAttempts: task.latestFailure
+            ? [
+                ...task.latestFailure.previousAttempts,
+                {
+                  attempt: task.latestFailure.attempt,
+                  ...(task.latestFailure.changeSetId ? { changeSetId: task.latestFailure.changeSetId } : {}),
+                  status: 'failed',
+                  summary: task.latestFailure.stderrExcerpt || task.latestFailure.stdoutExcerpt,
+                },
+              ]
+            : [],
+          ...(options.repairVerification.affectedPaths
+            ? { affectedPaths: options.repairVerification.affectedPaths }
+            : {}),
+        });
+      }
       await taskService.checkpoint(taskId, {
         name: 'repair.verification',
         data: verificationFailure ?? { ok: true },

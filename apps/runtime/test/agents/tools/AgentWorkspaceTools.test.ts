@@ -22,6 +22,21 @@ describe('AgentWorkspaceTools', () => {
     expect(proposals.changes).toHaveLength(0);
   });
 
+  it('supports root discovery through the list_roots compatibility tool', async () => {
+    const files = {
+      list: vi.fn().mockResolvedValue([{ name: 'apps', path: 'apps', kind: 'directory' }]),
+    } as unknown as FileService;
+    const proposals = createAgentWorkspaceProposalBuffer();
+    const tools = createAgentWorkspaceTools(files, proposals);
+    const listRoots = tools.find((tool) => tool.name === 'list_roots');
+
+    expect(listRoots).toBeDefined();
+    await expect(listRoots!.execute({}, context)).resolves.toEqual({
+      content: JSON.stringify([{ name: 'apps', path: 'apps', kind: 'directory' }]),
+    });
+    expect(files.list).toHaveBeenCalledWith('project-1', '.');
+  });
+
   it('records a replace-line proposal but does not mutate files', async () => {
     const files = {
       read: vi.fn().mockResolvedValue({ path: 'src/index.ts', content: 'export const value = 1;\n' }),

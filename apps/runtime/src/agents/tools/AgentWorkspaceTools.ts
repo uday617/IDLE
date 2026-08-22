@@ -149,5 +149,22 @@ export function createAgentWorkspaceTools(
     },
   };
 
-  return [listFiles, readFile, createFile, replaceLine, deleteFile];
+  // Compatibility with agents that use the conventional root-listing tool name.
+  // Keep list_files as the parameterized API while allowing root discovery
+  // without requiring the model to invent a path argument.
+  const listRoots: AgentTool = {
+    name: 'list_roots',
+    description: 'List the files and directories at the project root. Use this first when inspecting a project.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    },
+    async execute(_arguments_: Record<string, unknown>, context: AgentToolContext) {
+      const entries = await files.list(context.projectId, '.');
+      return { content: JSON.stringify(entries) };
+    },
+  };
+
+  return [listFiles, readFile, createFile, replaceLine, deleteFile, listRoots];
 }
