@@ -57,6 +57,22 @@ describe('AgentRuntime', () => {
     });
   });
 
+  it('preserves assistant tool calls for the next provider turn', async () => {
+    const provider = fakeProvider(
+      { content: '', toolCalls: [{ id: 'c1', name: 'read_file', arguments: { path: 'a.ts' } }], finishReason: 'tool_calls' },
+      { content: 'found it', toolCalls: [], finishReason: 'stop' },
+    );
+    const registry = registryWithTool('read_file', async () => ({ content: 'file contents' }));
+    await new AgentRuntime(provider, registry).run({ taskId: 't1', projectId: 'p1', prompt: 'find it' });
+
+    const requests = (provider.generate as ReturnType<typeof vi.fn>).mock.calls;
+    expect(requests[1][0].messages.at(-2)).toEqual({
+      role: 'assistant',
+      content: '',
+      toolCalls: [{ id: 'c1', name: 'read_file', arguments: { path: 'a.ts' } }],
+    });
+  });
+
   it('feeds tool results into the next provider turn', async () => {
     const provider = fakeProvider(
       { content: '', toolCalls: [{ id: 'c1', name: 'read_file', arguments: { path: 'a.ts' } }], finishReason: 'tool_calls' },
