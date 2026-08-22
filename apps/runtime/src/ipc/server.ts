@@ -247,7 +247,17 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
           command: options.repairVerification.command,
           checkId: options.repairVerification.checkId ?? 'repair-verification',
           attempt: Math.min(task.repairAttempts + 1, 3),
-          previousAttempts: task.latestFailure ? [task.latestFailure] : [],
+          previousAttempts: task.latestFailure
+            ? [
+                ...task.latestFailure.previousAttempts,
+                {
+                  attempt: task.latestFailure.attempt,
+                  ...(task.latestFailure.changeSetId ? { changeSetId: task.latestFailure.changeSetId } : {}),
+                  status: 'failed',
+                  summary: task.latestFailure.stderrExcerpt || task.latestFailure.stdoutExcerpt,
+                },
+              ]
+            : [],
           ...(options.repairVerification.affectedPaths
             ? { affectedPaths: options.repairVerification.affectedPaths }
             : {}),
