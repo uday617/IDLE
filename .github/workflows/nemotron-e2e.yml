@@ -25,16 +25,26 @@ jobs:
       - name: Install Ollama
         run: curl -fsSL https://ollama.com/install.sh | sh
 
+      - name: Start Ollama
+        shell: bash
+        run: |
+          if ! curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+            nohup env OLLAMA_HOST=127.0.0.1:11434 ollama serve > /tmp/ollama.log 2>&1 &
+            echo $! > /tmp/ollama.pid
+          fi
+
       - name: Wait for Ollama
         shell: bash
         run: |
           for i in {1..30}; do
             if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then
-              break
+              exit 0
             fi
             sleep 2
           done
-          curl -fsS http://127.0.0.1:11434/api/tags >/dev/null
+          echo "Ollama did not become ready on 127.0.0.1:11434"
+          cat /tmp/ollama.log || true
+          exit 1
 
       - name: Pull Nemotron 3 Nano 4B
         run: ollama pull nemotron-3-nano:4b
