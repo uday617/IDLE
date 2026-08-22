@@ -1,12 +1,18 @@
+import type { LLMToolCall, LLMToolDefinition } from '../llm/LLMProvider.js';
+
+export interface AgentToolContext {
+  projectId: string;
+  taskId: string;
+}
+
 export interface AgentToolDefinition {
   name: string;
   description: string;
-  inputSchema: Record<string, unknown>;
+  parameters: Record<string, unknown>;
+  execute(arguments_: Record<string, unknown>, context: AgentToolContext): Promise<{ content: string }>;
 }
 
-export interface AgentTool extends AgentToolDefinition {
-  execute(input: Record<string, unknown>): Promise<unknown>;
-}
+export type AgentTool = AgentToolDefinition;
 
 export class ToolRegistry {
   private readonly tools = new Map<string, AgentTool>();
@@ -20,11 +26,20 @@ export class ToolRegistry {
     return this.tools.get(name);
   }
 
-  definitions(): AgentToolDefinition[] {
-    return [...this.tools.values()].map(({ name, description, inputSchema }) => ({
+  definitions(): LLMToolDefinition[] {
+    return [...this.tools.values()].map(({ name, description, parameters }) => ({
       name,
       description,
-      inputSchema,
+      parameters,
     }));
+  }
+
+  async execute(call: LLMToolCall, context: AgentToolContext): Promise<{ content: string }> {
+    if (call.arguments === null || typeof call.arguments !== 'object' || Array.isArray(call.arguments)) {
+      throw new Error(`Invalid arguments for tool: ${call.name}`);
+    }
+    const tool = this.tools.get(call.name);
+    if (!tool) throw new Error(`Unknown tool: ${call.name}`);
+    return tool.execute(call.arguments, context);
   }
 }

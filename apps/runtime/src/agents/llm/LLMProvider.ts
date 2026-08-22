@@ -1,17 +1,13 @@
-import type { AgentContext } from '../AgentContext.js';
-import type { AgentToolDefinition } from '../tools/ToolRegistry.js';
-
 export interface LLMMessage {
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
+  toolCallId?: string;
 }
 
-export interface LLMGenerateRequest {
-  taskId: string;
-  system: string;
-  messages: readonly LLMMessage[];
-  context: AgentContext;
-  tools: readonly AgentToolDefinition[];
+export interface LLMToolDefinition {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
 }
 
 export interface LLMToolCall {
@@ -20,13 +16,17 @@ export interface LLMToolCall {
   arguments: Record<string, unknown>;
 }
 
-export interface LLMGenerateResponse {
+export interface LLMResponse {
   content: string;
-  finishReason: 'stop' | 'tool_call' | 'length' | 'error';
-  requestId?: string;
-  toolCalls?: readonly LLMToolCall[];
+  toolCalls: LLMToolCall[];
+  finishReason: 'stop' | 'tool_calls' | 'length' | 'error';
+}
+
+export interface LLMRequest {
+  messages: LLMMessage[];
+  tools: LLMToolDefinition[];
 }
 
 export interface LLMProvider {
-  generate(request: LLMGenerateRequest): Promise<LLMGenerateResponse>;
+  generate(request: LLMRequest): Promise<LLMResponse>;
 }

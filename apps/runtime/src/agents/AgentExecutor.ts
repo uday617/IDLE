@@ -1,3 +1,5 @@
+import type { AgentRunResult, AgentRunRequest } from './AgentRuntime.js';
+import type { AgentRuntime } from './AgentRuntime.js';
 import type { FileService } from '../project/FileService.js';
 import type { ProjectService } from '../project/ProjectService.js';
 import type { TaskRunRequest } from '../tasks/TaskRunner.js';
@@ -11,10 +13,15 @@ export interface AgentExecutionResult {
   packageName?: string;
 }
 
+export interface AgentExecutionWithRuntimeResult extends AgentExecutionResult {
+  agent: AgentRunResult;
+}
+
 export class AgentExecutor {
   constructor(
     private readonly projects: ProjectService,
     private readonly files: FileService,
+    private readonly runtime?: AgentRuntime,
   ) {}
 
   async execute(request: TaskRunRequest): Promise<AgentExecutionResult> {
@@ -42,5 +49,19 @@ export class AgentExecutor {
       topLevelEntries: entries.map(({ name, kind }) => ({ name, kind })),
       ...(packageName ? { packageName } : {}),
     };
+  }
+
+  async executeAgent(request: TaskRunRequest): Promise<AgentExecutionWithRuntimeResult> {
+    const inspection = await this.execute(request);
+    if (!this.runtime) throw new Error('Agent runtime is not configured');
+
+    const agentRequest: AgentRunRequest = {
+      taskId: inspection.taskId,
+      projectId: inspection.projectId,
+      prompt: inspection.prompt,
+    };
+    const agent = await this.runtime.run(agentRequest);
+
+    return { ...inspection, agent };
   }
 }
