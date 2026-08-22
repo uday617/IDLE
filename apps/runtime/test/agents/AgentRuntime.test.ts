@@ -138,4 +138,17 @@ describe('AgentRuntime', () => {
 
     expect(result).toMatchObject({ finishReason: 'error', error: 'provider unavailable', turns: 1 });
   });
+
+  it('includes optional system guidance before the task prompt', async () => {
+    const provider = fakeProvider({ content: 'done', toolCalls: [], finishReason: 'stop' });
+    const runtime = new AgentRuntime(provider, new ToolRegistry(), { systemPrompt: 'Use review-first tools.' });
+
+    await runtime.run({ taskId: 't7', projectId: 'p1', prompt: 'Inspect the project' });
+
+    const request = (provider.generate as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(request.messages).toEqual([
+      { role: 'system', content: 'Use review-first tools.' },
+      { role: 'user', content: 'Inspect the project' },
+    ]);
+  });
 });
