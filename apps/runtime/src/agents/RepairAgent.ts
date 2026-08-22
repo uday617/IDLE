@@ -38,7 +38,7 @@ export class RepairAgent {
       const changeset = this.proposalEngine.propose({
         taskId: `${request.taskId}-repair-${request.failure.attempt}`,
         goal: result.content,
-        files: request.files,
+        ...(request.files !== undefined ? { files: request.files } : {}),
       });
       if (changeset.changes.length === 0) {
         return { kind: 'no_repair_proposal', reason: 'repair agent produced no supported changes' };
