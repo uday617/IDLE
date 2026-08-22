@@ -13,7 +13,8 @@ async function exists(path: string): Promise<boolean> {
 
 function serviceFor(root: string) {
   const projects = new ProjectService();
-  return projects.open(root).then((project) => ({ project, service: new ChangeSetService(projects, new FileService(projects)) }));
+  const files = new FileService(projects);
+  return projects.open(root).then((project) => ({ project, files, service: new ChangeSetService(projects, files) }));
 }
 
 describe('ChangeSetService', () => {
@@ -91,5 +92,48 @@ describe('ChangeSetService', () => {
       errors: [{ path: 'a.txt', code: 'BASE_MISMATCH' }],
     });
     await expect(readFile(join(root, 'a.txt'), 'utf8')).resolves.toBe('one\n');
+  });
+
+  it('rolls back applied changes when verification fails', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'idle-change-set-rollback-'));
+    await writeFile(join(root, 'a.txt'), 'one\n');
+    const { project, files, service } = await serviceFor(root);
+    const originalReadState = files.readState.bind(files);
+    let readCount = 0;
+    files.readState = async (projectId, path) => {
+      readCount += 1;
+      const state = await originalReadState(projectId, path);
+      return readCount === 1 ? state : { exists: true, content: 'unexpected\n' };
+    };
+    const changeSet: ChangeSet = { id: 'rollback-1', description: 'rollback on verify failure', changes: [
+      { operation: 'modify', path: 'a.txt', baseContent: 'one\n', hunks: [{ oldStart: 1, oldLines: ['one'], newLines: ['ONE'] }] },
+    ] };
+
+    await expect(service.apply(project.id, changeSet)).rejects.toMatchObject({ rolledBack: true, rollbackError: null });
+    await expect(readFile(join(root, 'a.txt'), 'utf8')).resolves.toBe('one\n');
+  });
+
+  it('reports when rollback itself fails after verification failure', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'idle-change-set-rollback-'));
+    await writeFile(join(root, 'a.txt'), 'one\n');
+    const { project, files, service } = await serviceFor(root);
+    const originalReadState = files.readState.bind(files);
+    let readCount = 0;
+    files.readState = async (projectId, path) => {
+      readCount += 1;
+      const state = await originalReadState(projectId, path);
+      return readCount === 1 ? state : { exists: true, content: 'unexpected\n' };
+    };
+    (files as unknown as { restoreBatch: () => Promise<void> }).restoreBatch = async () => {
+      throw new Error('rollback unavailable');
+    };
+    const changeSet: ChangeSet = { id: 'rollback-2', description: 'rollback failure', changes: [
+      { operation: 'modify', path: 'a.txt', baseContent: 'one\n', hunks: [{ oldStart: 1, oldLines: ['one'], newLines: ['ONE'] }] },
+    ] };
+
+    await expect(service.apply(project.id, changeSet)).rejects.toMatchObject({
+      rolledBack: false,
+      rollbackError: 'rollback unavailable',
+    });
   });
 });
