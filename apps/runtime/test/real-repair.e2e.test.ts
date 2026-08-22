@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -66,6 +66,7 @@ describe('runtime repair entrypoint', () => {
   it('applies the approved repair and reruns verification to completion', async () => {
     const root = await mkdtemp(join(tmpdir(), 'idle-repair-'));
     const fixturePath = join(root, 'fixture', 'bug.ts');
+    await mkdir(join(root, 'fixture'), { recursive: true });
     await writeFile(fixturePath, 'const broken = true;\n', 'utf8');
 
     const repairAgent = new RepairAgent(
