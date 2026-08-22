@@ -29,7 +29,7 @@ export function createRuntimeServer(version: string): RuntimeServer {
     async getTask(taskId) {
       if (!started) throw new Error('Runtime is not started'); const task = taskRunner.get(taskId); if (!task || (task.status !== 'completed' && task.status !== 'failed')) return null;
       const result: TaskResult = { taskId: task.id as TaskResult['taskId'], status: task.status, ...(task.error ? { error: task.error } : {}) };
-      if (task.checkpoint?.name === 'agent.changeset') { const checkpoint = task.checkpoint.data as { id?: unknown } | undefined; if (typeof checkpoint?.id === 'string') { result.changeSetId = checkpoint.id; const changeSet = generatedChangeSets.get(checkpoint.id); if (changeSet) { result.changeSet = changeSet; result.changeSetReview = await changeSetService.review(task.projectId, changeSet); } } }
+      if (task.checkpoint?.name === 'agent.changeset') { const checkpoint = task.checkpoint.data as { id?: unknown } | undefined; if (typeof checkpoint?.id === 'string') { result.changeSetId = checkpoint.id; const changeSet = generatedChangeSets.get(checkpoint.id); if (changeSet && task.projectId) { result.changeSet = changeSet; result.changeSetReview = await changeSetService.review(task.projectId, changeSet); } } }
       return result;
     },
     subscribeTask(listener) { taskListeners.add(listener); return () => taskListeners.delete(listener); },
