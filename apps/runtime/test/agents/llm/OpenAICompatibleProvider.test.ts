@@ -65,6 +65,41 @@ describe('OpenAICompatibleProvider', () => {
     expect((fetcher.mock.calls[0]?.[1]?.headers as Record<string, string>)['authorization']).toBe('Bearer test-key');
   });
 
+  it('serializes assistant tool calls and tool results for the next provider turn', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: 'Done' }, finish_reason: 'stop' }],
+    }), { status: 200 }));
+    const provider = new OpenAICompatibleProvider({ baseUrl: 'https://example.test/v1', model: 'test-model', fetcher });
+
+    await provider.generate({
+      messages: [
+        { role: 'user', content: 'Inspect app.ts' },
+        {
+          role: 'assistant',
+          content: '',
+          toolCalls: [{ id: 'call-1', name: 'read_file', arguments: { path: 'app.ts' } }],
+        },
+        { role: 'tool', content: 'file contents', toolCallId: 'call-1' },
+      ],
+      tools: [],
+    });
+
+    const body = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
+    expect(body.messages).toEqual([
+      { role: 'user', content: 'Inspect app.ts' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'read_file', arguments: '{"path":"app.ts"}' },
+        }],
+      },
+      { role: 'tool', content: 'file contents', tool_call_id: 'call-1' },
+    ]);
+  });
+
   it('supports providers that omit authentication', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({
       choices: [{ message: { content: 'Done' }, finish_reason: 'stop' }],
