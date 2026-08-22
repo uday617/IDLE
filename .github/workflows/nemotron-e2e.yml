@@ -25,10 +25,9 @@ jobs:
       - name: Install Ollama
         run: curl -fsSL https://ollama.com/install.sh | sh
 
-      - name: Start Ollama
+      - name: Wait for Ollama
         shell: bash
         run: |
-          ollama serve > /tmp/ollama.log 2>&1 &
           for i in {1..30}; do
             if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then
               break
@@ -43,12 +42,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Build bundled runtime
+        run: pnpm dlx esbuild apps/runtime/src/main.ts --bundle --platform=node --format=esm --outfile=apps/runtime/dist/main.js
+
       - name: Run real Nemotron agent smoke test
         env:
           IDLE_LLM_BASE_URL: http://127.0.0.1:11434/v1
           IDLE_LLM_MODEL: nemotron-3-nano:4b
           IDLE_LLM_TIMEOUT_MS: 300000
-        run: pnpm agent:smoke
+        run: node scripts/real-agent-local-smoke.mjs
 
       - name: Dump Ollama log on failure
         if: failure()
