@@ -8,7 +8,8 @@ import { createConfiguredAgentProvider } from '../agents/llm/createConfiguredPro
 import { createAgentWorkspaceProposalBuffer, createAgentWorkspaceTools } from '../agents/tools/AgentWorkspaceTools.js';
 import { ToolRegistry } from '../agents/tools/ToolRegistry.js';
 import { RepairAgent } from '../agents/RepairAgent.js';
-import { RepairCoordinator, type RepairDecision } from '../agents/RepairCoordinator.js';
+import { RepairCoordinator } from '../agents/RepairCoordinator.js';
+import type { RepairDecision } from '../agents/RepairLoop.js';
 import type { AgentProposalFile } from '../agents/AgentProposalEngine.js';
 import { ProjectController, type ProjectCommand, type ProjectCommandResult } from '../project/ProjectController.js';
 import { ChangeSetService } from '../project/ChangeSetService.js';
