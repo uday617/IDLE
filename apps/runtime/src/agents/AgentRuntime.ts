@@ -24,6 +24,7 @@ const DEFAULT_MAX_TURNS = 8;
 
 export class AgentRuntime {
   private readonly maxTurns: number;
+  private readonly systemPrompt?: string;
 
   constructor(
     private readonly provider: LLMProvider,
@@ -31,6 +32,7 @@ export class AgentRuntime {
     options: AgentRuntimeOptions = {},
   ) {
     this.maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
+    this.systemPrompt = options.systemPrompt;
     if (!Number.isInteger(this.maxTurns) || this.maxTurns < 1) {
       throw new Error('maxTurns must be a positive integer');
     }
@@ -123,9 +125,5 @@ export class AgentRuntime {
       turns: this.maxTurns,
       error: `Agent reached the maximum turn limit of ${this.maxTurns}`,
     };
-  }
-
-  private get systemPrompt(): string | undefined {
-    return undefined;
   }
 }
