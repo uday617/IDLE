@@ -12,7 +12,7 @@ export interface AgentProposalRequest {
 }
 
 const CREATE_FILE_PATTERN = /Create file\s+["']([^"']+)["']\s+with content:\s*\n([\s\S]*?)(?=\nCreate file\s+["'][^"']+["']\s+with content:\s*\n|\nReplace line\s+["'][^"']+["']\s+with\s+["'][^"']+["']\s+in file\s+["'][^"']+["']|$)/gi;
-const REPLACE_LINE_PATTERN = /Replace line\s+["']([^"']*)["']\s+with\s+["']([^"']*)["']\s+in file\s+["'][^"']+["']/gi;
+const REPLACE_LINE_PATTERN = /Replace line\s+["']([^"']*)["']\s+with\s+["']([^"']*)["']\s+in file\s+["']([^"']+)["']/gi;
 
 function assertSafePath(path: string): void {
   const normalized = path.replaceAll('\\', '/');
