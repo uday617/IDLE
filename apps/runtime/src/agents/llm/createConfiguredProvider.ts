@@ -9,7 +9,7 @@ export interface AgentProviderConfig {
 }
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434/v1';
-const DEFAULT_MODEL = 'qwen2.5-coder:7b';
+const DEFAULT_MODEL = 'nemotron-3-nano:4b';
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 export function readAgentProviderConfig(env: NodeJS.ProcessEnv = process.env): AgentProviderConfig {
