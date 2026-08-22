@@ -1,7 +1,14 @@
+export interface LLMMessageToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
 export interface LLMMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   toolCallId?: string;
+  toolCalls?: LLMMessageToolCall[];
 }
 
 export interface LLMToolDefinition {
