@@ -107,7 +107,11 @@ describe('runtime server', () => {
     });
     await expect(readFile(join(root, 'hello.txt'), 'utf8')).resolves.toBe('hello\n');
 
-    await expect(server.handleProject({ type: 'changeset.apply', projectId: project.id, changeSet })).resolves.toEqual({ id: 'ipc-e2e-1', changedFiles: ['hello.txt'] });
+    await expect(server.handleProject({ type: 'changeset.apply', projectId: project.id, changeSet })).resolves.toEqual({
+      id: 'ipc-e2e-1',
+      changedFiles: ['hello.txt'],
+      verifiedFiles: ['hello.txt'],
+    });
     await expect(readFile(join(root, 'hello.txt'), 'utf8')).resolves.toBe('hello world\n');
     await server.stop();
   });
@@ -149,7 +153,11 @@ describe('runtime server', () => {
     };
 
     await expect(server.handleProject({ type: 'changeset.preview', projectId: project.id, changeSet })).resolves.toMatchObject({ id: 'ipc-create-delete-1' });
-    await expect(server.handleProject({ type: 'changeset.apply', projectId: project.id, changeSet })).resolves.toEqual({ id: 'ipc-create-delete-1', changedFiles: ['new.txt', 'remove.txt'] });
+    await expect(server.handleProject({ type: 'changeset.apply', projectId: project.id, changeSet })).resolves.toEqual({
+      id: 'ipc-create-delete-1',
+      changedFiles: ['new.txt', 'remove.txt'],
+      verifiedFiles: ['new.txt', 'remove.txt'],
+    });
     await expect(readFile(join(root, 'new.txt'), 'utf8')).resolves.toBe('new file\n');
     await expect(stat(join(root, 'remove.txt'))).rejects.toThrow();
     await server.stop();

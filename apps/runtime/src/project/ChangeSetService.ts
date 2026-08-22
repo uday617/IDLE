@@ -1,12 +1,14 @@
 import { applyChangeSet, type ChangeFileState } from '@idle/core';
-import type { ChangeSet, ChangeSetValidationError } from '@idle/contracts';
+import type {
+  ChangeSet,
+  ChangeSetApplyResult as ContractChangeSetApplyResult,
+  ChangeSetValidationError,
+  ChangeSetVerificationError as ContractChangeSetVerificationError,
+} from '@idle/contracts';
 import type { FileService } from './FileService.js';
 import type { ProjectService } from './ProjectService.js';
 
-export interface ChangeSetApplyResult {
-  id: string;
-  changedFiles: string[];
-}
+export interface ChangeSetApplyResult extends ContractChangeSetApplyResult {}
 
 export interface ChangeSetPreviewFile {
   path: string;
@@ -27,6 +29,16 @@ export interface ChangeSetReviewResult {
   valid: boolean;
   errors: ChangeSetValidationError[];
   preview: ChangeSetPreviewResult | null;
+}
+
+export class ChangeSetVerificationError extends Error {
+  readonly errors: ContractChangeSetVerificationError[];
+
+  constructor(errors: ContractChangeSetVerificationError[]) {
+    super(`Change Set verification failed: ${errors.map((error) => error.path).join(', ')}`);
+    this.name = 'ChangeSetVerificationError';
+    this.errors = errors;
+  }
 }
 
 function lineCount(content: string | null): number {
@@ -107,9 +119,31 @@ export class ChangeSetService {
       content: change.content,
     })));
 
+    const verificationErrors: ContractChangeSetVerificationError[] = [];
+    const verifiedFiles: string[] = [];
+    for (const change of result.changes) {
+      const state = await this.files.readState(projectId, change.path);
+      const expectedExists = change.content !== null;
+      const matches = state.exists === expectedExists && (!expectedExists || state.content === change.content);
+      if (!matches) {
+        verificationErrors.push({
+          path: change.path,
+          code: 'VERIFY_MISMATCH',
+          message: expectedExists
+            ? 'The applied file content does not match the planned result.'
+            : 'The applied file still exists after a planned delete.',
+        });
+      } else {
+        verifiedFiles.push(change.path);
+      }
+    }
+
+    if (verificationErrors.length > 0) throw new ChangeSetVerificationError(verificationErrors);
+
     return {
       id: changeSet.id,
       changedFiles: result.changes.map((change) => change.path),
+      verifiedFiles,
     };
   }
 }
