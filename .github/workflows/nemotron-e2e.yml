@@ -3,6 +3,8 @@ name: Nemotron Real E2E
 on:
   push:
     branches: [feat/nemotron-real-e2e]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
