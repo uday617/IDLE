@@ -82,7 +82,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
 
       const payload = await readJson(response);
       if (!response.ok) {
-        const message = getErrorMessage(payload) ?? response.statusText || 'request failed';
+        const message = getErrorMessage(payload) ?? response.statusText ?? 'request failed';
         throw new Error(`OpenAI-compatible provider returned HTTP ${response.status}: ${message}`);
       }
 
