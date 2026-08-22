@@ -1,5 +1,10 @@
 import { applyChangeSet, type ChangeFileState } from '@idle/core';
-import type { ChangeSet, ChangeSetApplyResult as ContractChangeSetApplyResult, ChangeSetVerificationError } from '@idle/contracts';
+import type {
+  ChangeSet,
+  ChangeSetApplyResult as ContractChangeSetApplyResult,
+  ChangeSetValidationError,
+  ChangeSetVerificationError as ContractChangeSetVerificationError,
+} from '@idle/contracts';
 import type { FileService } from './FileService.js';
 import type { ProjectService } from './ProjectService.js';
 
@@ -22,14 +27,14 @@ export interface ChangeSetPreviewResult {
 export interface ChangeSetReviewResult {
   id: string;
   valid: boolean;
-  errors: import('@idle/contracts').ChangeSetValidationError[];
+  errors: ChangeSetValidationError[];
   preview: ChangeSetPreviewResult | null;
 }
 
 export class ChangeSetVerificationError extends Error {
-  readonly errors: ChangeSetVerificationError[];
+  readonly errors: ContractChangeSetVerificationError[];
 
-  constructor(errors: ChangeSetVerificationError[]) {
+  constructor(errors: ContractChangeSetVerificationError[]) {
     super(`Change Set verification failed: ${errors.map((error) => error.path).join(', ')}`);
     this.name = 'ChangeSetVerificationError';
     this.errors = errors;
@@ -85,7 +90,7 @@ export class ChangeSetService {
       const result = applyChangeSet(changeSet, states);
       return { id: changeSet.id, valid: true, errors: [], preview: this.buildPreview(changeSet, states, result) };
     } catch (error) {
-      const errors = (error as { errors?: import('@idle/contracts').ChangeSetValidationError[] }).errors ?? [{
+      const errors = (error as { errors?: ChangeSetValidationError[] }).errors ?? [{
         path: '',
         code: 'BASE_MISMATCH' as const,
         message: error instanceof Error ? error.message : String(error),
@@ -114,7 +119,7 @@ export class ChangeSetService {
       content: change.content,
     })));
 
-    const verificationErrors: ChangeSetVerificationError[] = [];
+    const verificationErrors: ContractChangeSetVerificationError[] = [];
     const verifiedFiles: string[] = [];
     for (const change of result.changes) {
       const state = await this.files.readState(projectId, change.path);
