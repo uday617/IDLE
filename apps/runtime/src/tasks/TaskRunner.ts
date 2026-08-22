@@ -1,3 +1,5 @@
+import type { ToolExecutionResult } from '../agents/tools/ToolExecutor.js';
+import type { CommandPolicy } from '../security/SecurityPolicy.js';
 import type { TaskCheckpoint, TaskRecord, TaskService } from './TaskService.js';
 
 export interface TaskRunRequest {
@@ -5,6 +7,12 @@ export interface TaskRunRequest {
   projectId: string;
   prompt?: string;
   checkpoint?: TaskCheckpoint;
+}
+
+export interface CommandTaskRunRequest extends TaskRunRequest {
+  command: string;
+  cwd: string;
+  policy: CommandPolicy;
 }
 
 export interface TaskStatusEvent {
@@ -16,6 +24,7 @@ export interface TaskStatusEvent {
 
 type TaskListener = (event: TaskStatusEvent) => void;
 type TaskExecutor = (request: TaskRunRequest) => Promise<void>;
+type TaskCommandExecutor = (request: CommandTaskRunRequest) => Promise<ToolExecutionResult>;
 
 export class TaskRunner {
   private readonly listeners = new Set<TaskListener>();
@@ -23,6 +32,7 @@ export class TaskRunner {
   constructor(
     private readonly tasks: TaskService,
     private readonly execute: TaskExecutor,
+    private readonly executeCommand?: TaskCommandExecutor,
   ) {}
 
   subscribe(listener: TaskListener): () => void {
@@ -31,6 +41,35 @@ export class TaskRunner {
   }
 
   async submit(request: TaskRunRequest): Promise<TaskRecord> {
+    return this.run(request, this.execute);
+  }
+
+  async submitCommand(request: CommandTaskRunRequest): Promise<TaskRecord> {
+    if (!this.executeCommand) throw new Error('Secure command executor is not configured');
+    return this.run(
+      {
+        ...request,
+        checkpoint: {
+          name: 'command.submitted',
+          data: { command: request.command, cwd: request.cwd, policy: request.policy },
+        },
+      },
+      async (task) => {
+        await this.executeCommand!(request);
+        void task;
+      },
+    );
+  }
+
+  get(id: string): TaskRecord | undefined {
+    return this.tasks.get(id);
+  }
+
+  list(): TaskRecord[] {
+    return this.tasks.list();
+  }
+
+  private async run(request: TaskRunRequest, executor: TaskExecutor): Promise<TaskRecord> {
     const created = await this.tasks.create(request.id, request.projectId);
     this.emit(created);
 
@@ -42,7 +81,7 @@ export class TaskRunner {
     this.emit(running);
 
     try {
-      await this.execute(request);
+      await executor(request);
       const completed = await this.tasks.complete(request.id);
       this.emit(completed);
       return completed;
@@ -51,14 +90,6 @@ export class TaskRunner {
       this.emit(failed);
       return failed;
     }
-  }
-
-  get(id: string): TaskRecord | undefined {
-    return this.tasks.get(id);
-  }
-
-  list(): TaskRecord[] {
-    return this.tasks.list();
   }
 
   private emit(task: TaskRecord): void {
