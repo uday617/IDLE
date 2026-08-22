@@ -1,116 +1,125 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AgentRuntime } from '../../src/agents/AgentRuntime.js';
-import type { AgentContext } from '../../src/agents/AgentContext.js';
 import type { LLMProvider } from '../../src/agents/llm/LLMProvider.js';
 import { ToolRegistry } from '../../src/agents/tools/ToolRegistry.js';
 
+type ProviderResponse = Awaited<ReturnType<LLMProvider['generate']>>;
+
+const fakeProvider = (...responses: ProviderResponse[]): LLMProvider => ({
+  generate: vi.fn(async (request) => {
+    void request;
+    return responses.shift() ?? { content: '', toolCalls: [], finishReason: 'stop' as const };
+  }),
+});
+
+const registryWithTool = (name: string, execute: (args: Record<string, unknown>) => Promise<{ content: string }>) => {
+  const registry = new ToolRegistry();
+  registry.register({
+    name,
+    description: `Test ${name} tool`,
+    parameters: { type: 'object', properties: {} },
+    execute: async (args) => execute(args),
+  });
+  return registry;
+};
+
 describe('AgentRuntime', () => {
-  const context: AgentContext = {
-    taskId: 'task-1',
-    projectId: 'project-1',
-    prompt: 'Add authentication',
-    inspection: {
-      projectPath: '/workspace/app',
-      topLevelEntries: [{ name: 'src', kind: 'directory' }],
-      packageName: 'demo-app',
-    },
-    plan: {
-      taskId: 'task-1',
-      projectId: 'project-1',
-      goal: 'Add authentication',
-      steps: [{ id: 'inspect-structure', description: 'Inspect the project structure' }],
-    },
-  };
-
-  it('sends provider-neutral agent context to the injected provider', async () => {
-    const provider: LLMProvider = {
-      generate: vi.fn(async (request) => ({
-        content: 'I will inspect the auth flow first.',
-        finishReason: 'stop' as const,
-        requestId: request.taskId,
-      })),
-    };
-    const runtime = new AgentRuntime(provider, new ToolRegistry());
-
-    const result = await runtime.run(context);
-
-    expect(provider.generate).toHaveBeenCalledWith({
-      taskId: 'task-1',
-      system: expect.stringContaining('controlled tools'),
-      messages: [{ role: 'user', content: 'Add authentication' }],
-      context,
-      tools: [],
-    });
-    expect(result).toEqual({
-      taskId: 'task-1',
-      content: 'I will inspect the auth flow first.',
-      finishReason: 'stop',
-      requestId: 'task-1',
-    });
-  });
-
-  it('exposes only registered tools to the provider request', async () => {
-    const provider: LLMProvider = {
-      generate: vi.fn(async (request) => ({
-        content: 'ready',
-        finishReason: 'stop' as const,
-        requestId: request.taskId,
-      })),
-    };
-    const tools = new ToolRegistry();
-    tools.register({
+  it('normalizes tool definitions and executes registered tools with context', async () => {
+    const execute = vi.fn(async () => ({ content: 'ok' }));
+    const registry = new ToolRegistry();
+    registry.register({
       name: 'read_file',
       description: 'Read a project file',
-      inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
-      execute: async () => ({ content: 'safe' }),
-    });
-    const runtime = new AgentRuntime(provider, tools);
-
-    await runtime.run(context);
-
-    expect(provider.generate).toHaveBeenCalledWith(expect.objectContaining({
-      tools: [{
-        name: 'read_file',
-        description: 'Read a project file',
-        inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
-      }],
-    }));
-  });
-
-  it('does not execute tools during provider generation', async () => {
-    const execute = vi.fn(async () => ({ content: 'secret' }));
-    const provider: LLMProvider = {
-      generate: vi.fn(async (request) => ({
-        content: 'I need a tool call.',
-        finishReason: 'tool_call' as const,
-        requestId: request.taskId,
-        toolCalls: [{ id: 'call-1', name: 'read_file', arguments: { path: 'src/app.ts' } }],
-      })),
-    };
-    const tools = new ToolRegistry();
-    tools.register({
-      name: 'read_file',
-      description: 'Read a project file',
-      inputSchema: { type: 'object' },
+      parameters: { type: 'object', properties: { path: { type: 'string' } } },
       execute,
     });
-    const runtime = new AgentRuntime(provider, tools);
 
-    const result = await runtime.run(context);
+    expect(registry.definitions()).toEqual([{
+      name: 'read_file',
+      description: 'Read a project file',
+      parameters: { type: 'object', properties: { path: { type: 'string' } } },
+    }]);
 
-    expect(result.toolCalls).toEqual([{ id: 'call-1', name: 'read_file', arguments: { path: 'src/app.ts' } }]);
+    await expect(registry.execute(
+      { id: 'call-1', name: 'read_file', arguments: { path: 'src/index.ts' } },
+      { projectId: 'p1', taskId: 't1' },
+    )).resolves.toEqual({ content: 'ok' });
+
+    expect(execute).toHaveBeenCalledWith({ path: 'src/index.ts' }, { projectId: 'p1', taskId: 't1' });
+  });
+
+  it('finishes in one turn on final text', async () => {
+    const provider = fakeProvider({ content: 'done', toolCalls: [], finishReason: 'stop' });
+    const runtime = new AgentRuntime(provider, new ToolRegistry());
+
+    await expect(runtime.run({ taskId: 't1', projectId: 'p1', prompt: 'inspect' })).resolves.toMatchObject({
+      taskId: 't1', content: 'done', finishReason: 'stop', turns: 1,
+    });
+  });
+
+  it('feeds tool results into the next provider turn', async () => {
+    const provider = fakeProvider(
+      { content: '', toolCalls: [{ id: 'c1', name: 'read_file', arguments: { path: 'a.ts' } }], finishReason: 'tool_calls' },
+      { content: 'found it', toolCalls: [], finishReason: 'stop' },
+    );
+    const registry = registryWithTool('read_file', async () => ({ content: 'file contents' }));
+    const runtime = new AgentRuntime(provider, registry);
+
+    await runtime.run({ taskId: 't2', projectId: 'p1', prompt: 'find it' });
+    const requests = (provider.generate as ReturnType<typeof vi.fn>).mock.calls;
+    expect(requests[1][0].messages.at(-1)).toEqual({ role: 'tool', content: 'file contents', toolCallId: 'c1' });
+  });
+
+  it('rejects unknown tools without executing anything', async () => {
+    const execute = vi.fn(async () => ({ content: 'should not run' }));
+    const registry = registryWithTool('read_file', execute);
+    const provider = fakeProvider({
+      content: '',
+      toolCalls: [{ id: 'c1', name: 'delete_everything', arguments: {} }],
+      finishReason: 'tool_calls',
+    });
+
+    const result = await new AgentRuntime(provider, registry).run({ taskId: 't3', projectId: 'p1', prompt: 'x' });
+
+    expect(result.finishReason).toBe('error');
+    expect(result.error).toContain('Unknown tool');
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it('rejects duplicate tool registrations', () => {
-    const tools = new ToolRegistry();
-    const definition = {
-      name: 'read_file',
-      description: 'Read a project file',
-      inputSchema: { type: 'object' },
-      execute: async () => null,
-    };
-    tools.register(definition);
-    expect(() => tools.register(definition)).toThrow('Tool already registered: read_file');
+  it('stops after maxTurns without an unbounded retry loop', async () => {
+    const provider = fakeProvider(
+      { content: '', toolCalls: [{ id: 'c1', name: 'inspect', arguments: {} }], finishReason: 'tool_calls' },
+      { content: '', toolCalls: [{ id: 'c2', name: 'inspect', arguments: {} }], finishReason: 'tool_calls' },
+      { content: '', toolCalls: [{ id: 'c3', name: 'inspect', arguments: {} }], finishReason: 'tool_calls' },
+    );
+    const runtime = new AgentRuntime(provider, registryWithTool('inspect', async () => ({ content: 'ok' })), { maxTurns: 2 });
+
+    const result = await runtime.run({ taskId: 't4', projectId: 'p1', prompt: 'loop' });
+
+    expect(result.finishReason).toBe('length');
+    expect(result.turns).toBe(2);
+    expect(provider.generate).toHaveBeenCalledTimes(2);
+  });
+
+  it('turns malformed tool arguments into a controlled tool result', async () => {
+    const provider = fakeProvider(
+      { content: '', toolCalls: [{ id: 'c1', name: 'read_file', arguments: null as never }], finishReason: 'tool_calls' },
+      { content: 'cannot read', toolCalls: [], finishReason: 'stop' },
+    );
+    const runtime = new AgentRuntime(provider, registryWithTool('read_file', async () => ({ content: 'should not run' })));
+
+    const result = await runtime.run({ taskId: 't5', projectId: 'p1', prompt: 'read' });
+    const requests = (provider.generate as ReturnType<typeof vi.fn>).mock.calls;
+
+    expect(result.content).toBe('cannot read');
+    expect(requests[1][0].messages.at(-1)?.content).toContain('Invalid arguments');
+  });
+
+  it('converts provider failure to a controlled task result', async () => {
+    const provider: LLMProvider = { generate: vi.fn().mockRejectedValue(new Error('provider unavailable')) };
+
+    const result = await new AgentRuntime(provider, new ToolRegistry()).run({ taskId: 't6', projectId: 'p1', prompt: 'x' });
+
+    expect(result).toMatchObject({ finishReason: 'error', error: 'provider unavailable', turns: 1 });
   });
 });
