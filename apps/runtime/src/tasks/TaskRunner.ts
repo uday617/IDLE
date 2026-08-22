@@ -31,7 +31,7 @@ export class TaskRunner {
   }
 
   async submit(request: TaskRunRequest): Promise<TaskRecord> {
-    const created = await this.tasks.create(request.id);
+    const created = await this.tasks.create(request.id, request.projectId);
     this.emit(created);
 
     if (request.checkpoint) {
