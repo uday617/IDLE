@@ -71,7 +71,11 @@ export class AgentRuntime {
         };
       }
 
-      messages.push({ role: 'assistant', content: response.content });
+      messages.push({
+        role: 'assistant',
+        content: response.content,
+        ...(response.toolCalls.length > 0 ? { toolCalls: response.toolCalls } : {}),
+      });
 
       if (response.finishReason !== 'tool_calls' || response.toolCalls.length === 0) {
         return {
