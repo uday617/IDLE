@@ -83,4 +83,40 @@ describe('TaskRunner', () => {
     expect(result.error).toBe('Destructive command is blocked');
     expect(executeCommand).toHaveBeenCalledTimes(1);
   });
+
+  it('resumes persisted pending and running tasks through the task executor', async () => {
+    const service = new TaskService();
+    await service.create('task-pending', 'project-1', 'inspect the project');
+    await service.checkpoint('task-pending', { name: 'submitted', data: { projectId: 'project-1', prompt: 'inspect the project' } });
+    await service.create('task-running', 'project-1', 'run the task again');
+    await service.start('task-running');
+    await service.checkpoint('task-running', { name: 'submitted', data: { projectId: 'project-1', prompt: 'run the task again' } });
+
+    const execute = vi.fn(async () => undefined);
+    const runner = new TaskRunner(service, execute);
+    const events: string[] = [];
+    runner.subscribe((event) => events.push(`${event.taskId}:${event.status}`));
+
+    const resumed = await runner.resumePendingTasks();
+
+    expect(resumed).toEqual(['task-pending', 'task-running']);
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute).toHaveBeenCalledWith({ id: 'task-pending', projectId: 'project-1', prompt: 'inspect the project', checkpoint: { name: 'submitted', data: { projectId: 'project-1', prompt: 'inspect the project' } } });
+    expect(service.get('task-pending')?.status).toBe('completed');
+    expect(service.get('task-running')?.status).toBe('completed');
+    expect(events).toEqual(['task-pending:running', 'task-pending:completed', 'task-running:running', 'task-running:completed']);
+  });
+
+  it('pauses a persisted task when its checkpoint cannot reconstruct a run request', async () => {
+    const service = new TaskService();
+    await service.create('task-invalid', 'project-1');
+    await service.start('task-invalid');
+    await service.checkpoint('task-invalid', { name: 'agent.plan', data: { plan: 'missing submitted request' } });
+
+    const runner = new TaskRunner(service, vi.fn(async () => undefined));
+    const resumed = await runner.resumePendingTasks();
+
+    expect(resumed).toEqual([]);
+    expect(runner.get('task-invalid')).toMatchObject({ status: 'paused', error: 'Task checkpoint does not contain a resumable submission' });
+  });
 });
