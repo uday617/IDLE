@@ -33,11 +33,19 @@ export interface ChangeSetReviewResult {
 
 export class ChangeSetVerificationError extends Error {
   readonly errors: ContractChangeSetVerificationError[];
+  readonly rolledBack: boolean;
+  readonly rollbackError: string | null;
 
-  constructor(errors: ContractChangeSetVerificationError[]) {
+  constructor(
+    errors: ContractChangeSetVerificationError[],
+    rolledBack = false,
+    rollbackError: string | null = null,
+  ) {
     super(`Change Set verification failed: ${errors.map((error) => error.path).join(', ')}`);
     this.name = 'ChangeSetVerificationError';
     this.errors = errors;
+    this.rolledBack = rolledBack;
+    this.rollbackError = rollbackError;
   }
 }
 
@@ -138,7 +146,22 @@ export class ChangeSetService {
       }
     }
 
-    if (verificationErrors.length > 0) throw new ChangeSetVerificationError(verificationErrors);
+    if (verificationErrors.length > 0) {
+      try {
+        await this.files.restoreBatch(projectId, result.changes.map((change) => ({
+          path: change.path,
+          state: states.get(change.path) ?? { exists: false, content: '' },
+        })));
+        throw new ChangeSetVerificationError(verificationErrors, true, null);
+      } catch (error) {
+        if (error instanceof ChangeSetVerificationError) throw error;
+        throw new ChangeSetVerificationError(
+          verificationErrors,
+          false,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
 
     return {
       id: changeSet.id,
