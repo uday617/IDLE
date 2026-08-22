@@ -11,3 +11,4 @@ export interface ChangeSetPreviewResult { id: string; files: ChangeSetPreviewFil
 export type ChangeSetValidationErrorCode = 'INVALID_PATH' | 'DUPLICATE_PATH' | 'BASE_MISMATCH' | 'MISSING_CONTENT' | 'INVALID_HUNK' | 'HUNK_MISMATCH';
 export interface ChangeSetValidationError { path: string; code: ChangeSetValidationErrorCode; message: string; }
 export interface ChangeSetReviewResult { id: string; valid: boolean; errors: ChangeSetValidationError[]; preview: ChangeSetPreviewResult | null; }
+export interface ChangeSetApplyResult { id: string; changedFiles: string[]; }
