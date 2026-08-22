@@ -32,7 +32,7 @@ describe('CommandRepairVerifier', () => {
       taskId: 'task-2' as never,
       projectId: 'project-1',
       cwd: process.cwd(),
-      command: 'node -e console.error("broken"); process.exit(3)',
+      command: 'node -e "throw Error(\'broken\')"',
       checkId: 'unit-check',
       attempt: 3,
       previousAttempts: [],
@@ -42,10 +42,10 @@ describe('CommandRepairVerifier', () => {
       taskId: 'task-2' as FailureContext['taskId'],
       attempt: 3,
       checkId: 'unit-check',
-      exitCode: 3,
+      exitCode: 1,
       stdoutExcerpt: '',
-      stderrExcerpt: 'broken',
       previousAttempts: [],
     });
+    expect(failure?.stderrExcerpt).toContain('broken');
   });
 });
