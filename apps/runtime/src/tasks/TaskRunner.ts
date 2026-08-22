@@ -47,32 +47,16 @@ export class TaskRunner {
   async submitCommand(request: CommandTaskRunRequest): Promise<TaskRecord> {
     if (!this.executeCommand) throw new Error('Secure command executor is not configured');
     return this.run(
-      {
-        ...request,
-        checkpoint: {
-          name: 'command.submitted',
-          data: { command: request.command, cwd: request.cwd, policy: request.policy },
-        },
-      },
-      async (task) => {
-        await this.executeCommand!(request);
-        void task;
-      },
+      { ...request, checkpoint: { name: 'command.submitted', data: { command: request.command, cwd: request.cwd, policy: request.policy } } },
+      async (task) => { await this.executeCommand!(request); void task; },
     );
   }
 
   async resumePendingTasks(): Promise<string[]> {
     const candidates = this.tasks.list().filter((task) => task.status === 'running' || task.status === 'pending');
     const resumed = await this.tasks.resumePendingTasks(async (task) => {
-      if (!task.projectId || task.prompt === undefined) {
-        throw new Error('Task checkpoint does not contain a resumable submission');
-      }
-      await this.execute({
-        id: task.id,
-        projectId: task.projectId,
-        prompt: task.prompt,
-        ...(task.checkpoint ? { checkpoint: task.checkpoint } : {}),
-      });
+      if (!task.projectId || task.prompt === undefined) throw new Error('Task checkpoint does not contain a resumable submission');
+      await this.execute({ id: task.id, projectId: task.projectId, prompt: task.prompt, ...(task.checkpoint ? { checkpoint: task.checkpoint } : {}) });
     });
 
     const resumedSet = new Set(resumed);
@@ -80,8 +64,7 @@ export class TaskRunner {
       const current = this.tasks.get(task.id);
       if (!current) continue;
       if (resumedSet.has(task.id)) {
-        const running = await this.tasks.start(task.id);
-        this.emit(running);
+        this.emit(current);
         const completed = await this.tasks.complete(task.id);
         this.emit(completed);
       } else if (current.status === 'paused') {
@@ -91,25 +74,15 @@ export class TaskRunner {
     return resumed;
   }
 
-  get(id: string): TaskRecord | undefined {
-    return this.tasks.get(id);
-  }
-
-  list(): TaskRecord[] {
-    return this.tasks.list();
-  }
+  get(id: string): TaskRecord | undefined { return this.tasks.get(id); }
+  list(): TaskRecord[] { return this.tasks.list(); }
 
   private async run(request: TaskRunRequest, executor: TaskExecutor): Promise<TaskRecord> {
     const created = await this.tasks.create(request.id, request.projectId, request.prompt);
     this.emit(created);
-
-    if (request.checkpoint) {
-      await this.tasks.checkpoint(request.id, request.checkpoint);
-    }
-
+    if (request.checkpoint) await this.tasks.checkpoint(request.id, request.checkpoint);
     const running = await this.tasks.start(request.id);
     this.emit(running);
-
     try {
       await executor(request);
       const completed = await this.tasks.complete(request.id);
@@ -123,12 +96,7 @@ export class TaskRunner {
   }
 
   private emit(task: TaskRecord): void {
-    const event: TaskStatusEvent = {
-      taskId: task.id,
-      status: task.status,
-      timestamp: task.updatedAt,
-      ...(task.error ? { error: task.error } : {}),
-    };
+    const event: TaskStatusEvent = { taskId: task.id, status: task.status, timestamp: task.updatedAt, ...(task.error ? { error: task.error } : {}) };
     for (const listener of this.listeners) listener(event);
   }
 }
