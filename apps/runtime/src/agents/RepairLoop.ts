@@ -1,4 +1,4 @@
-import type { FailureContext, RepairOutcome } from '@idle/contracts';
+import type { ChangeSet, FailureContext, RepairOutcome } from '@idle/contracts';
 
 export const REPAIR_MAX_ATTEMPTS = 3 as const;
 
@@ -14,7 +14,7 @@ export interface RepairState {
 
 export type RepairDecision =
   | { kind: 'request_repair'; state: RepairState; failure: FailureContext }
-  | { kind: 'await_review'; state: RepairState; changeSetId: string }
+  | { kind: 'await_review'; state: RepairState; changeSetId: string; changeSet: ChangeSet }
   | { kind: 'completed'; state: RepairState }
   | { kind: 'failed'; state: RepairState; reason: string };
 
@@ -55,7 +55,12 @@ export class RepairLoop {
       status: 'review' as const,
       latestChangeSetId: outcome.changeset.id,
     };
-    return { kind: 'await_review', state: reviewed, changeSetId: outcome.changeset.id };
+    return {
+      kind: 'await_review',
+      state: reviewed,
+      changeSetId: outcome.changeset.id,
+      changeSet: outcome.changeset,
+    };
   }
 
   onVerificationSuccess(state: RepairState): RepairDecision {
