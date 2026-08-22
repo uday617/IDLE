@@ -2,7 +2,7 @@ import type { TaskCheckpoint, TaskRecord, TaskService } from './TaskService.js';
 
 export interface TaskRunRequest {
   id: string;
-  projectId?: string;
+  projectId: string;
   prompt?: string;
   checkpoint?: TaskCheckpoint;
 }
