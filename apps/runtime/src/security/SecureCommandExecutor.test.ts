@@ -18,21 +18,21 @@ describe('SecureCommandExecutor', () => {
     expect(result.stderr).toBe('');
   });
 
-  it('rejects commands outside the allowlist before spawning', async () => {
+  it('rejects commands outside the allowlist before spawning', () => {
     const executor = new SecureCommandExecutor(SecurityPolicy, {
       allowedCommands: ['node'],
     });
 
-    await expect(executor.run({ command: 'npm test', cwd: process.cwd() }))
-      .rejects.toThrow('Command is not allowed: npm');
+    expect(() => executor.run({ command: 'npm test', cwd: process.cwd() }))
+      .toThrow('Command is not allowed: npm');
   });
 
-  it('rejects shell control syntax', async () => {
+  it('rejects shell control syntax before spawning', () => {
     const executor = new SecureCommandExecutor(SecurityPolicy, {
       allowedCommands: ['node'],
     });
 
-    await expect(executor.run({ command: 'node -e "console.log(1)" && echo unsafe', cwd: process.cwd() }))
-      .rejects.toThrow('Shell control characters are not allowed');
+    expect(() => executor.run({ command: 'node -e "console.log(1)" && echo unsafe', cwd: process.cwd() }))
+      .toThrow('Shell control characters are not allowed');
   });
 });
