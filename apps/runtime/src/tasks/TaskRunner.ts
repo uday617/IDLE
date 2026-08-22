@@ -61,6 +61,36 @@ export class TaskRunner {
     );
   }
 
+  async resumePendingTasks(): Promise<string[]> {
+    const candidates = this.tasks.list().filter((task) => task.status === 'running' || task.status === 'pending');
+    const resumed = await this.tasks.resumePendingTasks(async (task) => {
+      if (!task.projectId || task.prompt === undefined) {
+        throw new Error('Task checkpoint does not contain a resumable submission');
+      }
+      await this.execute({
+        id: task.id,
+        projectId: task.projectId,
+        prompt: task.prompt,
+        ...(task.checkpoint ? { checkpoint: task.checkpoint } : {}),
+      });
+    });
+
+    const resumedSet = new Set(resumed);
+    for (const task of candidates) {
+      const current = this.tasks.get(task.id);
+      if (!current) continue;
+      if (resumedSet.has(task.id)) {
+        const running = await this.tasks.start(task.id);
+        this.emit(running);
+        const completed = await this.tasks.complete(task.id);
+        this.emit(completed);
+      } else if (current.status === 'paused') {
+        this.emit(current);
+      }
+    }
+    return resumed;
+  }
+
   get(id: string): TaskRecord | undefined {
     return this.tasks.get(id);
   }
@@ -70,7 +100,7 @@ export class TaskRunner {
   }
 
   private async run(request: TaskRunRequest, executor: TaskExecutor): Promise<TaskRecord> {
-    const created = await this.tasks.create(request.id, request.projectId);
+    const created = await this.tasks.create(request.id, request.projectId, request.prompt);
     this.emit(created);
 
     if (request.checkpoint) {
