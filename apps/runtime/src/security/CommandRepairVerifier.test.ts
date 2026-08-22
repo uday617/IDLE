@@ -39,7 +39,7 @@ describe('CommandRepairVerifier', () => {
     });
 
     expect(failure).toMatchObject<Partial<FailureContext>>({
-      taskId: 'task-2',
+      taskId: 'task-2' as FailureContext['taskId'],
       attempt: 3,
       checkId: 'unit-check',
       exitCode: 3,
