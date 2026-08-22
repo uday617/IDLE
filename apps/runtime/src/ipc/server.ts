@@ -202,6 +202,7 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
     async applyRepair(taskId, changeSetId) {
       if (!started) throw new Error('Runtime is not started');
       if (!options.repairVerifier) throw new Error('Repair verifier is not configured');
+      if (!repairCoordinator) throw new Error('Repair agent is not configured');
 
       const task = taskService.get(taskId);
       if (!task) throw new Error(`Unknown task: ${taskId}`);
@@ -225,19 +226,17 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
       });
 
       if (verificationFailure) {
-        return repairCoordinator
-          ? repairCoordinator.onVerificationFailureAndPropose(taskId, {
-            ...verificationFailure,
-            attempt: Math.max(task.repairAttempts + 1, verificationFailure.attempt),
-          })
-          : Promise.resolve({
-            kind: 'failed',
-            state: { taskId, attempt: task.repairAttempts, status: 'failed', latestChangeSetId: changeSetId },
-            reason: 'Repair verification failed and no repair coordinator is configured',
-          });
+        const nextDecision = await repairCoordinator.onVerificationFailureAndPropose(taskId, {
+          ...verificationFailure,
+          attempt: Math.max(task.repairAttempts + 1, verificationFailure.attempt),
+        });
+        if (nextDecision.kind === 'await_review') {
+          generatedChangeSets.set(nextDecision.changeSet.id, nextDecision.changeSet);
+          await taskService.checkpoint(taskId, { name: 'repair.changeset', data: nextDecision.changeSet });
+        }
+        return nextDecision;
       }
 
-      if (!repairCoordinator) throw new Error('Repair agent is not configured');
       return repairCoordinator.onVerificationSuccess(taskId);
     },
     subscribeTask(listener) {
