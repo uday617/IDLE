@@ -1,7 +1,9 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import type { FailureContext } from '@idle/contracts';
 
 export type TaskStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed';
+export type PersistedRepairStatus = 'verifying' | 'repair_pending' | 'review' | 'completed' | 'failed';
 
 export interface TaskCheckpoint {
   name: string;
@@ -14,6 +16,9 @@ export interface TaskRecord {
   prompt?: string;
   status: TaskStatus;
   checkpoint?: TaskCheckpoint;
+  repairAttempts: number;
+  repairStatus: PersistedRepairStatus;
+  latestFailure?: FailureContext;
   updatedAt: string;
   error?: string;
 }
@@ -33,7 +38,13 @@ export class TaskService {
       const raw = await readFile(this.storePath, 'utf8');
       const store = JSON.parse(raw) as TaskStore;
       this.tasks.clear();
-      for (const task of Object.values(store.tasks ?? {})) this.tasks.set(task.id, task);
+      for (const task of Object.values(store.tasks ?? {})) {
+        this.tasks.set(task.id, {
+          ...task,
+          repairAttempts: task.repairAttempts ?? 0,
+          repairStatus: task.repairStatus ?? 'verifying',
+        });
+      }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
@@ -45,6 +56,8 @@ export class TaskService {
       ...(projectId ? { projectId } : {}),
       ...(prompt !== undefined ? { prompt } : {}),
       status: 'pending',
+      repairAttempts: 0,
+      repairStatus: 'verifying',
       updatedAt: new Date().toISOString(),
     };
     this.tasks.set(id, task);
@@ -52,26 +65,35 @@ export class TaskService {
     return task;
   }
 
-  async start(id: string): Promise<TaskRecord> {
-    return this.update(id, { status: 'running' });
+  async start(id: string): Promise<TaskRecord> { return this.update(id, { status: 'running' }); }
+
+  async checkpoint(id: string, checkpoint: TaskCheckpoint): Promise<TaskRecord> { return this.update(id, { checkpoint }); }
+
+  async recordRepairFailure(id: string, failure: FailureContext): Promise<TaskRecord> {
+    const current = this.tasks.get(id);
+    if (!current) throw new Error(`Unknown task: ${id}`);
+    if (failure.attempt < 1 || failure.attempt > 3) throw new Error(`Invalid repair attempt: ${failure.attempt}`);
+    return this.update(id, {
+      repairAttempts: failure.attempt,
+      repairStatus: 'repair_pending',
+      latestFailure: failure,
+    });
   }
 
-  async checkpoint(id: string, checkpoint: TaskCheckpoint): Promise<TaskRecord> {
-    return this.update(id, { checkpoint });
+  async markRepairReview(id: string): Promise<TaskRecord> {
+    return this.update(id, { repairStatus: 'review' });
   }
 
   async complete(id: string): Promise<TaskRecord> {
-    return this.update(id, { status: 'completed' });
+    return this.update(id, { status: 'completed', repairStatus: 'completed' });
   }
 
   async fail(id: string, error: Error | string): Promise<TaskRecord> {
-    return this.update(id, { status: 'failed', error: error instanceof Error ? error.message : error });
+    return this.update(id, { status: 'failed', repairStatus: 'failed', error: error instanceof Error ? error.message : error });
   }
 
   async pause(id: string, error?: string): Promise<TaskRecord> {
-    return error === undefined
-      ? this.update(id, { status: 'paused' })
-      : this.update(id, { status: 'paused', error });
+    return error === undefined ? this.update(id, { status: 'paused' }) : this.update(id, { status: 'paused', error });
   }
 
   get(id: string): TaskRecord | undefined {
@@ -79,9 +101,7 @@ export class TaskService {
     return task ? structuredClone(task) : undefined;
   }
 
-  list(): TaskRecord[] {
-    return [...this.tasks.values()].map((task) => structuredClone(task));
-  }
+  list(): TaskRecord[] { return [...this.tasks.values()].map((task) => structuredClone(task)); }
 
   async resumePendingTasks(resume?: (task: TaskRecord) => Promise<void>): Promise<string[]> {
     const resumable = [...this.tasks.values()].filter((task) => task.status === 'running' || task.status === 'pending');
