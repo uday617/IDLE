@@ -46,6 +46,51 @@ describe('runtime server', () => {
     await server.stop();
   });
 
+  it('generates a reviewable modify changeset from an explicit replacement goal without writing', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'idle-runtime-proposal-'));
+    temporaryPaths.push(root);
+    await writeFile(join(root, 'hello.txt'), 'hello\n');
+
+    const server = createRuntimeServer('0.1.0');
+    await server.start();
+    const project = await server.handleProject({ type: 'project.open', path: root });
+
+    await expect(
+      server.submitTask({
+        taskId: 'task-proposal-1',
+        projectId: project.id,
+        prompt: 'Replace line "hello" with "hello world" in file "hello.txt"',
+      }),
+    ).resolves.toEqual({ taskId: 'task-proposal-1', status: 'queued' });
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const result = await server.getTask('task-proposal-1');
+    expect(result).toMatchObject({
+      taskId: 'task-proposal-1',
+      status: 'completed',
+      changeSetId: 'changeset-task-proposal-1',
+      changeSet: {
+        id: 'changeset-task-proposal-1',
+        description: 'Replace line "hello" with "hello world" in file "hello.txt"',
+        changes: [
+          {
+            operation: 'modify',
+            path: 'hello.txt',
+            baseContent: 'hello\n',
+            hunks: [{ oldStart: 1, oldLines: ['hello'], newLines: ['hello world'] }],
+          },
+        ],
+      },
+      changeSetReview: {
+        id: 'changeset-task-proposal-1',
+      },
+    });
+    await expect(readFile(join(root, 'hello.txt'), 'utf8')).resolves.toBe('hello\n');
+
+    await server.stop();
+  });
+
   it('supports task status subscriptions and cleanup', async () => {
     const server = createRuntimeServer('0.1.0');
     await server.start();
