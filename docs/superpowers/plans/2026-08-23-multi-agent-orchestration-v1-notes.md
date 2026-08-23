@@ -1,1 +1,0 @@
-Implementation checkpoint: deterministic decomposition, coordination state/events, path conflict detection, deterministic aggregation, bounded coordinator, opt-in TaskRunner integration, and runtime E2E coverage are implemented on this branch. Final CI is the merge gate.
