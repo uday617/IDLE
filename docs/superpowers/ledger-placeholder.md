@@ -1,1 +1,0 @@
-Multi-agent orchestration execution ledger is maintained outside the product source tree.
