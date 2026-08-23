@@ -27,7 +27,7 @@ export class AgentDelegationService {
     taskDescription: string,
     execution: AgentExecution<T>,
   ): Promise<DelegationResult<T>> {
-    const decision = this.requests.request(parentAgentId, request);
+    const decision = this.requests.request(parentAgentId, { ...request, childAgentId });
     if (decision.decision !== 'allow') {
       return {
         decision: decision.decision,
@@ -37,10 +37,7 @@ export class AgentDelegationService {
       };
     }
 
-    const context = this.learning.recallForTask({
-      agentId: childAgentId,
-      description: taskDescription,
-    });
+    const context = this.learning.recallForTask({ agentId: childAgentId, description: taskDescription });
 
     try {
       const outcome = await execution.execute(context);
@@ -62,6 +59,8 @@ export class AgentDelegationService {
         { success: false, summary: error instanceof Error ? error.message : 'Delegated execution failed' },
       );
       throw error;
+    } finally {
+      if (decision.reservationId) this.requests.release(decision.reservationId);
     }
   }
 }
