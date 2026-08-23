@@ -3,6 +3,15 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createRuntimeServer } from '../../src/ipc/server.js';
 
+async function waitForTask(server: ReturnType<typeof createRuntimeServer>, taskId: string) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const result = await server.getTask(taskId);
+    if (result) return result;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`Task did not reach a terminal state: ${taskId}`);
+}
+
 describe('multi-agent orchestration e2e', () => {
   const temporaryPaths: string[] = [];
 
@@ -32,8 +41,7 @@ describe('multi-agent orchestration e2e', () => {
       orchestration: { enabled: true, maxAgents: 2 },
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    await expect(server.getTask('multi-agent-conflict-1')).resolves.toMatchObject({
+    await expect(waitForTask(server, 'multi-agent-conflict-1')).resolves.toMatchObject({
       status: 'failed',
       error: expect.stringContaining('Multi-agent conflict'),
     });
@@ -56,8 +64,7 @@ describe('multi-agent orchestration e2e', () => {
       orchestration: { enabled: true, maxAgents: 1 },
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    await expect(server.getTask('multi-agent-single-1')).resolves.toMatchObject({
+    await expect(waitForTask(server, 'multi-agent-single-1')).resolves.toMatchObject({
       status: 'completed',
       changeSet: { changes: [expect.objectContaining({ path: 'single.txt' })] },
     });
