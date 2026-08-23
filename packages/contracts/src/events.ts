@@ -7,4 +7,17 @@ export const EVENT_TYPES = {
   AGENT_COMPLETED: 'AGENT_COMPLETED',
 } as const;
 
+export const COORDINATION_EVENT_TYPES = {
+  CREATED: 'coordination.created',
+  STARTED: 'subtask.started',
+  PROGRESS: 'subtask.progress',
+  CLAIMED: 'subtask.claimed',
+  CONFLICT: 'coordination.conflict',
+  COMPLETED: 'subtask.completed',
+  FAILED: 'subtask.failed',
+  CANCELLED: 'subtask.cancelled',
+  AGGREGATED: 'changeset.aggregated',
+} as const;
+
 export type EventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];
+export type CoordinationEventType = (typeof COORDINATION_EVENT_TYPES)[keyof typeof COORDINATION_EVENT_TYPES];
