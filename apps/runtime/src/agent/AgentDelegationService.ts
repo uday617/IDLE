@@ -37,7 +37,7 @@ export class AgentDelegationService {
       };
     }
 
-    const context = this.learning.recallForTask({ agentId: childAgentId, description: taskDescription });
+    const context = await this.learning.recallForTask({ agentId: childAgentId, description: taskDescription });
 
     try {
       const outcome = await execution.execute(context);
