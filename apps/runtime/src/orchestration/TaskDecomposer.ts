@@ -40,13 +40,14 @@ export class TaskDecomposer {
       const header = line.match(SUBTASK_HEADER);
       if (header) {
         if (current) blocks.push(current);
-        current = { prompt: header[1].trim(), claimedPaths: [] };
+        const title = header[1]?.trim();
+        current = title ? { prompt: title, claimedPaths: [] } : null;
         continue;
       }
 
       const paths = line.match(PATHS_HEADER);
       if (paths && current) {
-        current.claimedPaths = paths[1]
+        current.claimedPaths = (paths[1] ?? '')
           .split(',')
           .map((path) => path.trim())
           .filter(Boolean);
