@@ -8,6 +8,10 @@ export class ProjectMemory<T = string> {
     if (!projectId) throw new Error('projectId is required');
   }
 
+  get id(): string {
+    return this.projectId;
+  }
+
   async saveFact(fact: T, metadata: MemoryMetadata): Promise<ProjectFact<T>> {
     return this.repository.saveProjectFact(this.projectId, fact, metadata);
   }
