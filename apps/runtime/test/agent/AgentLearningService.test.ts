@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { AgentLearningService } from '../../src/agent/AgentLearningService.js';
 import { AgentMemoryService } from '../../src/agent/AgentMemoryService.js';
 import { MemoryRepository } from '../../src/memory/MemoryRepository.js';
@@ -9,15 +9,19 @@ import { ProjectMemory } from '../../src/memory/ProjectMemory.js';
 
 const temporaryDirectories: string[] = [];
 
+afterAll(async () => {
+  await Promise.all(temporaryDirectories.map((directory) => rm(directory, { recursive: true, force: true })));
+});
+
 describe('AgentLearningService', () => {
-  it('recalls relevant memories for a task', () => {
+  it('recalls relevant memories for a task', async () => {
     const memory = new AgentMemoryService();
     memory.remember('agent-1', 'PostgreSQL connection pooling is required', ['database']);
     memory.remember('agent-1', 'Use Vitest for unit tests', ['testing']);
     memory.remember('agent-2', 'PostgreSQL belongs to another agent');
     const learning = new AgentLearningService(memory);
 
-    const context = learning.recallForTask({ agentId: 'agent-1', description: 'Improve PostgreSQL database integration' });
+    const context = await learning.recallForTask({ agentId: 'agent-1', description: 'Improve PostgreSQL database integration' });
     expect(context.memories).toHaveLength(1);
     expect(context.memories[0].content).toContain('PostgreSQL');
   });
@@ -49,14 +53,14 @@ describe('AgentLearningService', () => {
     expect(memory.recall('agent-2')).toEqual([]);
   });
 
-  it('degrades gracefully when memory operations fail', () => {
+  it('degrades gracefully when memory operations fail', async () => {
     const brokenMemory = {
       recall: () => { throw new Error('memory unavailable'); },
       remember: () => { throw new Error('memory unavailable'); },
     } as unknown as AgentMemoryService;
     const learning = new AgentLearningService(brokenMemory);
 
-    expect(learning.recallForTask({ agentId: 'agent-1', description: 'continue task' })).toEqual({ memories: [] });
+    await expect(learning.recallForTask({ agentId: 'agent-1', description: 'continue task' })).resolves.toEqual({ memories: [] });
     expect(learning.recordOutcome(
       { agentId: 'agent-1', description: 'continue task' },
       { success: true, summary: 'completed' },
@@ -82,7 +86,7 @@ describe('AgentLearningService', () => {
     });
 
     expect(context.projectFacts).toHaveLength(1);
-    expect(context.projectFacts[0].fact).toBe('Use pnpm for workspace package management');
+    expect(context.projectFacts?.[0].fact).toBe('Use pnpm for workspace package management');
 
     const restartedLearning = new AgentLearningService(
       new AgentMemoryService(),
