@@ -8,7 +8,7 @@ export interface TaskRunRequest {
   projectId: string;
   prompt?: string;
   checkpoint?: TaskCheckpoint;
-  orchestration?: TaskOrchestrationRequest;
+  orchestration?: TaskOrchestrationRequest | undefined;
 }
 
 export interface CommandTaskRunRequest extends TaskRunRequest {
@@ -17,6 +17,7 @@ export interface CommandTaskRunRequest extends TaskRunRequest {
   policy: CommandPolicy;
 }
 
+type TaskListener = (event: TaskStatusEvent) => void;
 export interface TaskStatusEvent {
   taskId: string;
   status: TaskRecord['status'];
@@ -24,7 +25,6 @@ export interface TaskStatusEvent {
   error?: string;
 }
 
-type TaskListener = (event: TaskStatusEvent) => void;
 type TaskExecutor = (request: TaskRunRequest) => Promise<void>;
 type TaskMultiAgentExecutor = (request: TaskRunRequest) => Promise<ChangeSet>;
 type TaskCommandExecutor = (request: CommandTaskRunRequest) => Promise<ToolExecutionResult>;
