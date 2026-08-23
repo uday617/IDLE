@@ -1,1 +1,0 @@
-Multi-agent orchestration V1 implementation is ready for CI validation.
