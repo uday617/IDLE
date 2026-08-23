@@ -68,6 +68,13 @@ export class CoordinationStateStore {
     this.emit(COORDINATION_EVENT_TYPES.FAILED, { subtaskId, error });
   }
 
+  cancel(subtaskId: string): void {
+    const run = this.find(subtaskId);
+    if (run.status !== 'queued' && run.status !== 'running') throw new Error(`subtask ${subtaskId} cannot cancel from ${run.status}`);
+    run.status = 'cancelled';
+    this.emit(COORDINATION_EVENT_TYPES.CANCELLED, { subtaskId });
+  }
+
   conflict(subtaskIds: string[], paths: string[]): void {
     for (const subtaskId of subtaskIds) {
       const run = this.find(subtaskId);
