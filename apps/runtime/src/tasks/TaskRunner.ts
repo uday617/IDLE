@@ -67,7 +67,20 @@ export class TaskRunner {
     const candidates = this.tasks.list().filter((task) => task.status === 'running' || task.status === 'pending');
     const resumed = await this.tasks.resumePendingTasks(async (task) => {
       if (!task.projectId || task.prompt === undefined) throw new Error('Task checkpoint does not contain a resumable submission');
-      await this.execute({ id: task.id, projectId: task.projectId, prompt: task.prompt, ...(task.checkpoint ? { checkpoint: task.checkpoint } : {}) });
+      const submission = task.checkpoint?.data as { orchestration?: TaskOrchestrationRequest } | undefined;
+      const request: TaskRunRequest = {
+        id: task.id,
+        projectId: task.projectId,
+        prompt: task.prompt,
+        ...(task.checkpoint ? { checkpoint: task.checkpoint } : {}),
+        ...(submission?.orchestration ? { orchestration: submission.orchestration } : {}),
+      };
+      if (request.orchestration?.enabled && this.executeMultiAgent) {
+        const changeSet = await this.executeMultiAgent(request);
+        await this.tasks.checkpoint(task.id, { name: 'agent.changeset', data: changeSet });
+        return;
+      }
+      await this.execute(request);
     });
 
     const resumedSet = new Set(resumed);
