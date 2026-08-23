@@ -1,3 +1,4 @@
+import type { ChangeSet, TaskOrchestrationRequest } from '@idle/contracts';
 import type { ToolExecutionResult } from '../agents/tools/ToolExecutor.js';
 import type { CommandPolicy } from '../security/SecurityPolicy.js';
 import type { TaskCheckpoint, TaskRecord, TaskService } from './TaskService.js';
@@ -7,6 +8,7 @@ export interface TaskRunRequest {
   projectId: string;
   prompt?: string;
   checkpoint?: TaskCheckpoint;
+  orchestration?: TaskOrchestrationRequest | undefined;
 }
 
 export interface CommandTaskRunRequest extends TaskRunRequest {
@@ -15,6 +17,7 @@ export interface CommandTaskRunRequest extends TaskRunRequest {
   policy: CommandPolicy;
 }
 
+type TaskListener = (event: TaskStatusEvent) => void;
 export interface TaskStatusEvent {
   taskId: string;
   status: TaskRecord['status'];
@@ -22,8 +25,8 @@ export interface TaskStatusEvent {
   error?: string;
 }
 
-type TaskListener = (event: TaskStatusEvent) => void;
 type TaskExecutor = (request: TaskRunRequest) => Promise<void>;
+type TaskMultiAgentExecutor = (request: TaskRunRequest) => Promise<ChangeSet>;
 type TaskCommandExecutor = (request: CommandTaskRunRequest) => Promise<ToolExecutionResult>;
 
 export class TaskRunner {
@@ -33,6 +36,7 @@ export class TaskRunner {
     private readonly tasks: TaskService,
     private readonly execute: TaskExecutor,
     private readonly executeCommand?: TaskCommandExecutor,
+    private readonly executeMultiAgent?: TaskMultiAgentExecutor,
   ) {}
 
   subscribe(listener: TaskListener): () => void {
@@ -41,6 +45,13 @@ export class TaskRunner {
   }
 
   async submit(request: TaskRunRequest): Promise<TaskRecord> {
+    if (request.orchestration?.enabled) {
+      if (!this.executeMultiAgent) throw new Error('Multi-agent executor is not configured');
+      return this.run(request, async (task) => {
+        const changeSet = await this.executeMultiAgent!(task);
+        await this.tasks.checkpoint(task.id, { name: 'agent.changeset', data: changeSet });
+      });
+    }
     return this.run(request, this.execute);
   }
 
@@ -56,7 +67,20 @@ export class TaskRunner {
     const candidates = this.tasks.list().filter((task) => task.status === 'running' || task.status === 'pending');
     const resumed = await this.tasks.resumePendingTasks(async (task) => {
       if (!task.projectId || task.prompt === undefined) throw new Error('Task checkpoint does not contain a resumable submission');
-      await this.execute({ id: task.id, projectId: task.projectId, prompt: task.prompt, ...(task.checkpoint ? { checkpoint: task.checkpoint } : {}) });
+      const submission = task.checkpoint?.data as { orchestration?: TaskOrchestrationRequest } | undefined;
+      const request: TaskRunRequest = {
+        id: task.id,
+        projectId: task.projectId,
+        prompt: task.prompt,
+        ...(task.checkpoint ? { checkpoint: task.checkpoint } : {}),
+        ...(submission?.orchestration ? { orchestration: submission.orchestration } : {}),
+      };
+      if (request.orchestration?.enabled && this.executeMultiAgent) {
+        const changeSet = await this.executeMultiAgent(request);
+        await this.tasks.checkpoint(task.id, { name: 'agent.changeset', data: changeSet });
+        return;
+      }
+      await this.execute(request);
     });
 
     const resumedSet = new Set(resumed);

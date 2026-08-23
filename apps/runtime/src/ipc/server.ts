@@ -13,6 +13,7 @@ import { createAgentWorkspaceProposalBuffer, createAgentWorkspaceTools } from '.
 import { ToolRegistry } from '../agents/tools/ToolRegistry.js';
 import { RepairAgent } from '../agents/RepairAgent.js';
 import { RepairCoordinator } from '../agents/RepairCoordinator.js';
+import { MultiAgentCoordinator } from '../orchestration/MultiAgentCoordinator.js';
 import type { RepairDecision } from '../agents/RepairLoop.js';
 import type { AgentProposalFile } from '../agents/AgentProposalEngine.js';
 import { ProjectController, type ProjectCommand, type ProjectCommandResult } from '../project/ProjectController.js';
@@ -98,6 +99,57 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
     ? new CommandRepairVerifier(new SecureCommandExecutor(SecurityPolicy, options.repairVerification.policy))
     : undefined;
 
+  const executeMultiAgent = async (request: Parameters<NonNullable<ConstructorParameters<typeof TaskRunner>[1]>>[0]): Promise<ChangeSet> => {
+    const coordinator = new MultiAgentCoordinator(async (task, subtask) => {
+      const inspection = await agentExecutor.execute({ id: subtask.id, projectId: task.projectId, prompt: subtask.prompt });
+      const plan = agentPlanner.createPlan(inspection);
+      let changeSet: ChangeSet;
+
+      if (llmProvider) {
+        const proposals = createAgentWorkspaceProposalBuffer();
+        const registry = new ToolRegistry();
+        for (const tool of createAgentWorkspaceTools(fileService, proposals)) registry.register(tool);
+        const runtime = new AgentRuntime(llmProvider, registry, {
+          maxTurns: 8,
+          systemPrompt: REAL_AGENT_SYSTEM_PROMPT,
+        });
+        const agent = await runtime.run({
+          taskId: subtask.id,
+          projectId: task.projectId,
+          prompt: subtask.prompt,
+        });
+        if (agent.error) throw new Error(agent.error);
+        changeSet = changeSetBuilder.createChangeSet(plan, proposals.changes);
+      } else {
+        const goal = subtask.prompt;
+        const proposalFiles = (await Promise.all(extractReferencedFilePaths(goal).map(async (path) => {
+          const state = await fileService.readState(task.projectId, path);
+          return state.exists ? { path, content: state.content } : undefined;
+        }))).filter((file): file is { path: string; content: string } => file !== undefined);
+        const proposal = agentProposalEngine.propose({ taskId: subtask.id, goal, files: proposalFiles });
+        changeSet = changeSetBuilder.createChangeSet(plan, proposal.changes);
+      }
+
+      return {
+        changeSet,
+        ...(subtask.claimedPaths ? { claimedPaths: subtask.claimedPaths } : { claimedPaths: extractReferencedFilePaths(subtask.prompt) }),
+      };
+    });
+
+    const coordination = await coordinator.run({ id: request.id as Parameters<typeof coordinator.run>[0]['id'], projectId: request.projectId as Parameters<typeof coordinator.run>[0]['projectId'], prompt: request.prompt ?? '' }, {
+      defaultMaxAgents: 2,
+      hardMaxAgents: 4,
+      ...(request.orchestration?.maxAgents !== undefined ? { maxAgents: request.orchestration.maxAgents } : {}),
+    });
+    if (coordination.status !== 'completed' || !coordination.combinedChangeSet) {
+      const conflictMessage = coordination.conflicts.map((conflict) => `${conflict.paths.join(', ')} (${conflict.subtaskIds.join(', ')})`).join('; ');
+      const failureMessage = coordination.failures.map((failure) => `${failure.subtaskId}: ${failure.error}`).join('; ');
+      throw new Error(conflictMessage ? `Multi-agent conflict: ${conflictMessage}` : failureMessage || `Multi-agent task ${coordination.status}`);
+    }
+    generatedChangeSets.set(coordination.combinedChangeSet.id, coordination.combinedChangeSet);
+    return coordination.combinedChangeSet;
+  };
+
   const taskRunner = new TaskRunner(taskService, async (request) => {
     const inspection = await agentExecutor.execute(request);
     await taskService.checkpoint(request.id, { name: 'agent.inspection', data: inspection });
@@ -134,7 +186,7 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
 
     generatedChangeSets.set(changeSet.id, changeSet);
     await taskService.checkpoint(request.id, { name: 'agent.changeset', data: changeSet });
-  });
+  }, undefined, executeMultiAgent);
 
   taskRunner.subscribe((event) => {
     const status = toContractStatus(event.status);
@@ -173,7 +225,8 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
         id: request.taskId,
         projectId: request.projectId,
         prompt: request.prompt,
-        checkpoint: { name: 'submitted', data: { projectId: request.projectId, prompt: request.prompt } },
+        orchestration: request.orchestration,
+        checkpoint: { name: 'submitted', data: { projectId: request.projectId, prompt: request.prompt, orchestration: request.orchestration } },
       });
       return { taskId: request.taskId, status: 'queued' };
     },
