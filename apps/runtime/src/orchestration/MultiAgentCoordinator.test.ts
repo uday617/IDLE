@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { MultiAgentCoordinator } from './MultiAgentCoordinator.js';
-import type { ChangeSet, TaskId } from '@idle/contracts';
+import type { ChangeSet, ProjectId, TaskId } from '@idle/contracts';
 
 describe('MultiAgentCoordinator', () => {
+  const projectId = 'project-1' as ProjectId;
   const changeSet = (id: string, path: string): ChangeSet => ({
     id,
     description: id,
@@ -12,7 +13,7 @@ describe('MultiAgentCoordinator', () => {
   it('defaults to two concurrent agents', async () => {
     let active = 0;
     let peak = 0;
-    const coordinator = new MultiAgentCoordinator(async (subtask) => {
+    const coordinator = new MultiAgentCoordinator(async (_task, subtask) => {
       active += 1;
       peak = Math.max(peak, active);
       await new Promise((resolve) => setTimeout(resolve, 5));
@@ -20,7 +21,7 @@ describe('MultiAgentCoordinator', () => {
       return { changeSet: changeSet(subtask.id, `${subtask.id}.ts`) };
     });
 
-    const result = await coordinator.run({ id: 'task-1' as TaskId, prompt: [
+    const result = await coordinator.run({ id: 'task-1' as TaskId, projectId, prompt: [
       'SUBTASK 1: First', 'PATHS: a.ts', '', 'SUBTASK 2: Second', 'PATHS: b.ts', '', 'SUBTASK 3: Third', 'PATHS: c.ts',
     ].join('\n') });
 
@@ -31,7 +32,7 @@ describe('MultiAgentCoordinator', () => {
   it('never schedules more than the hard cap of four', async () => {
     let active = 0;
     let peak = 0;
-    const coordinator = new MultiAgentCoordinator(async (subtask) => {
+    const coordinator = new MultiAgentCoordinator(async (_task, subtask) => {
       active += 1;
       peak = Math.max(peak, active);
       await new Promise((resolve) => setTimeout(resolve, 5));
@@ -40,19 +41,20 @@ describe('MultiAgentCoordinator', () => {
     });
     const prompt = Array.from({ length: 6 }, (_, index) => `SUBTASK ${index + 1}: Work ${index + 1}\nPATHS: ${index + 1}.ts`).join('\n\n');
 
-    await coordinator.run({ id: 'task-2' as TaskId, prompt }, { defaultMaxAgents: 2, hardMaxAgents: 4, maxAgents: 8 });
+    await coordinator.run({ id: 'task-2' as TaskId, projectId, prompt }, { defaultMaxAgents: 2, hardMaxAgents: 4, maxAgents: 8 });
 
     expect(peak).toBe(4);
   });
 
   it('does not aggregate when a required subtask fails', async () => {
-    const coordinator = new MultiAgentCoordinator(async (subtask) => {
+    const coordinator = new MultiAgentCoordinator(async (_task, subtask) => {
       if (subtask.id.endsWith('2')) throw new Error('boom');
       return { changeSet: changeSet(subtask.id, `${subtask.id}.ts`) };
     });
 
     const result = await coordinator.run({
       id: 'task-3' as TaskId,
+      projectId,
       prompt: 'SUBTASK 1: First\nPATHS: a.ts\n\nSUBTASK 2: Second\nPATHS: b.ts',
     });
 
@@ -64,7 +66,7 @@ describe('MultiAgentCoordinator', () => {
   it('propagates cancellation to running executors', async () => {
     const controller = new AbortController();
     let observedAbort = false;
-    const coordinator = new MultiAgentCoordinator(async (_subtask, _agentId, signal) => {
+    const coordinator = new MultiAgentCoordinator(async (_task, _subtask, _agentId, signal) => {
       await new Promise<void>((resolve) => {
         signal.addEventListener('abort', () => {
           observedAbort = true;
@@ -76,6 +78,7 @@ describe('MultiAgentCoordinator', () => {
 
     const promise = coordinator.run({
       id: 'task-4' as TaskId,
+      projectId,
       prompt: 'SUBTASK 1: First\nPATHS: a.ts\n\nSUBTASK 2: Second\nPATHS: b.ts',
     }, undefined, controller.signal);
     controller.abort();
