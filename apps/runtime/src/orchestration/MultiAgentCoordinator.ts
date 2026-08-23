@@ -1,4 +1,4 @@
-import type { AgentId, AgentRunRecord, AgentSubtask, ChangeSet, MultiAgentConfig, TaskId } from '@idle/contracts';
+import type { AgentId, AgentRunRecord, AgentSubtask, ChangeSet, MultiAgentConfig, ProjectId, TaskId } from '@idle/contracts';
 import { ConflictDetector } from './ConflictDetector.js';
 import { CoordinationEventEmitter } from './CoordinationEventEmitter.js';
 import { CoordinationStateStore } from './CoordinationStateStore.js';
@@ -7,6 +7,7 @@ import { TaskDecomposer } from './TaskDecomposer.js';
 
 export interface AgentTask {
   id: TaskId;
+  projectId: ProjectId;
   prompt: string;
 }
 
@@ -16,6 +17,7 @@ export interface AgentExecutionResult {
 }
 
 export type AgentSubtaskExecutor = (
+  task: AgentTask,
   subtask: AgentSubtask,
   agentId: AgentId,
   signal: AbortSignal,
@@ -29,10 +31,7 @@ export interface CoordinationResult {
   failures: Array<{ subtaskId: string; error: string }>;
 }
 
-const DEFAULT_CONFIG: MultiAgentConfig = {
-  defaultMaxAgents: 2,
-  hardMaxAgents: 4,
-};
+const DEFAULT_CONFIG: MultiAgentConfig = { defaultMaxAgents: 2, hardMaxAgents: 4 };
 
 export class MultiAgentCoordinator {
   constructor(private readonly executeSubtask: AgentSubtaskExecutor) {}
@@ -42,8 +41,7 @@ export class MultiAgentCoordinator {
     const requested = config.maxAgents ?? config.defaultMaxAgents;
     if (!Number.isInteger(requested) || requested < 1) throw new Error('maxAgents must be a positive integer');
     const maxAgents = Math.min(requested, hardCap);
-    const decomposer = new TaskDecomposer({ maxAgents });
-    const subtasks = decomposer.decompose(task.id, task.prompt);
+    const subtasks = new TaskDecomposer({ maxAgents }).decompose(task.id, task.prompt);
     const events = new CoordinationEventEmitter();
     const store = new CoordinationStateStore(events);
     store.create(task.id, subtasks);
@@ -58,7 +56,7 @@ export class MultiAgentCoordinator {
         const agentId = `agent-${index + 1}` as AgentId;
         store.start(subtask.id, agentId);
         try {
-          const result = await this.executeSubtask(subtask, agentId, signal);
+          const result = await this.executeSubtask(task, subtask, agentId, signal);
           if (signal.aborted) {
             store.cancel(subtask.id);
             return;
@@ -74,8 +72,7 @@ export class MultiAgentCoordinator {
       }
     };
 
-    const workers = Array.from({ length: Math.min(maxAgents, subtasks.length) }, () => worker());
-    await Promise.all(workers);
+    await Promise.all(Array.from({ length: Math.min(maxAgents, subtasks.length) }, () => worker()));
 
     if (signal.aborted) {
       for (const run of store.snapshot().runs) {
