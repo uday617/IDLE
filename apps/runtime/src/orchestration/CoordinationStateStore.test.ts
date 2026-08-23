@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CoordinationEventEmitter, CoordinationStateStore } from './CoordinationStateStore.js';
+import { CoordinationStateStore } from './CoordinationStateStore.js';
+import { CoordinationEventEmitter } from './CoordinationEventEmitter.js';
 import type { AgentSubtask, AgentId, TaskId } from '@idle/contracts';
 
 describe('CoordinationStateStore', () => {
