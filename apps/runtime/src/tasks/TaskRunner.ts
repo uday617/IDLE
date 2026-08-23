@@ -1,3 +1,4 @@
+import type { ChangeSet, TaskOrchestrationRequest } from '@idle/contracts';
 import type { ToolExecutionResult } from '../agents/tools/ToolExecutor.js';
 import type { CommandPolicy } from '../security/SecurityPolicy.js';
 import type { TaskCheckpoint, TaskRecord, TaskService } from './TaskService.js';
@@ -7,6 +8,7 @@ export interface TaskRunRequest {
   projectId: string;
   prompt?: string;
   checkpoint?: TaskCheckpoint;
+  orchestration?: TaskOrchestrationRequest;
 }
 
 export interface CommandTaskRunRequest extends TaskRunRequest {
@@ -24,6 +26,7 @@ export interface TaskStatusEvent {
 
 type TaskListener = (event: TaskStatusEvent) => void;
 type TaskExecutor = (request: TaskRunRequest) => Promise<void>;
+type TaskMultiAgentExecutor = (request: TaskRunRequest) => Promise<ChangeSet>;
 type TaskCommandExecutor = (request: CommandTaskRunRequest) => Promise<ToolExecutionResult>;
 
 export class TaskRunner {
@@ -33,6 +36,7 @@ export class TaskRunner {
     private readonly tasks: TaskService,
     private readonly execute: TaskExecutor,
     private readonly executeCommand?: TaskCommandExecutor,
+    private readonly executeMultiAgent?: TaskMultiAgentExecutor,
   ) {}
 
   subscribe(listener: TaskListener): () => void {
@@ -41,6 +45,13 @@ export class TaskRunner {
   }
 
   async submit(request: TaskRunRequest): Promise<TaskRecord> {
+    if (request.orchestration?.enabled) {
+      if (!this.executeMultiAgent) throw new Error('Multi-agent executor is not configured');
+      return this.run(request, async (task) => {
+        const changeSet = await this.executeMultiAgent!(task);
+        await this.tasks.checkpoint(task.id, { name: 'agent.changeset', data: changeSet });
+      });
+    }
     return this.run(request, this.execute);
   }
 
