@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createRuntimeServer } from '../src/ipc/server.js';
+import { MemoryRepository } from '../src/memory/MemoryRepository.js';
 
 describe('runtime server', () => {
   const temporaryPaths: string[] = [];
@@ -44,6 +45,24 @@ describe('runtime server', () => {
 
     unsubscribe();
     await server.stop();
+  });
+
+  it('records completed task outcomes in the configured memory store', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'idle-runtime-memory-project-'));
+    const memoryDir = await mkdtemp(join(tmpdir(), 'idle-runtime-memory-store-'));
+    temporaryPaths.push(root, memoryDir);
+    const server = createRuntimeServer('0.1.0', { memoryStorePath: memoryDir });
+    await server.start();
+    const project = await server.handleProject({ type: 'project.open', path: root });
+
+    await server.submitTask({ taskId: 'task-memory-1', projectId: project.id, prompt: 'inspect the project' });
+    await expect(waitForTaskResult(server, 'task-memory-1')).resolves.toMatchObject({ status: 'completed' });
+    await server.stop();
+
+    const memory = new MemoryRepository(memoryDir);
+    await expect(memory.listTaskMemory('task-memory-1')).resolves.toEqual([
+      expect.objectContaining({ projectId: project.id, status: 'completed', prompt: 'inspect the project' }),
+    ]);
   });
 
   it('generates a reviewable modify changeset from an explicit replacement goal without writing', async () => {
