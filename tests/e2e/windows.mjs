@@ -14,8 +14,8 @@ const electronExecutable = join(root, 'apps', 'desktop', 'node_modules', 'electr
 async function createFixtureCopy() {
   const directory = await mkdtemp(join(tmpdir(), 'idle-e2e-'));
   const project = join(directory, 'sample-project');
-  await cp(fixture, project, { recursive: true });
   execFileSync('git', ['init', project], { stdio: 'ignore' });
+  await cp(fixture, project, { recursive: true });
   return { directory, project };
 }
 
@@ -68,15 +68,8 @@ async function testOpenProjectAndSingleAgent() {
     }, project);
 
     const page = await app.firstWindow();
-    page.on('console', (message) => console.log(`[renderer:${message.type()}] ${message.text()}`));
-    page.on('pageerror', (error) => console.log(`[renderer:pageerror] ${error.stack ?? error.message}`));
-    await page.waitForLoadState('domcontentloaded');
-    console.log(`[e2e] window url=${page.url()} title=${await page.title()}`);
-    console.log(`[e2e] body=${await page.locator('body').innerText()}`);
-    console.log(`[e2e] idleBridge=${await page.evaluate(() => typeof window.idle)}`);
-
     await page.getByRole('button', { name: 'Open Project' }).click();
-    await assertText(page, project);
+    await assertText(page, 'sample-project');
     await assertText(page, 'bug.ts');
 
     await page.getByRole('button', { name: '+ Quick Task' }).click();
