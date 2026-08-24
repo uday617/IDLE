@@ -26,7 +26,7 @@ describe('IndexScheduler', () => {
       releaseFirst = resolve;
     });
 
-    const index = vi.fn(async (_projectId: string, _paths: string[], signal: AbortSignal) => {
+    const index = vi.fn(async (_projectId: string, _paths: readonly string[], signal: AbortSignal) => {
       aborted.push(signal);
       if (aborted.length === 1) await firstStarted;
       if (signal.aborted) throw new Error('aborted');
@@ -34,13 +34,15 @@ describe('IndexScheduler', () => {
 
     const scheduler = new IndexScheduler(index, { debounceMs: 0 });
     const first = scheduler.schedule({ projectId: 'project-1', paths: ['src/a.ts'] });
-    await scheduler.flush('project-1');
+    const flushFirst = scheduler.flush('project-1');
+    await Promise.resolve();
 
     const second = scheduler.schedule({ projectId: 'project-1', paths: ['src/b.ts'] });
     expect(aborted[0]?.aborted).toBe(true);
     releaseFirst();
 
     await expect(first).rejects.toThrow('aborted');
+    await flushFirst;
     await second;
     expect(index).toHaveBeenCalledTimes(2);
   });
