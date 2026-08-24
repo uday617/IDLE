@@ -20,6 +20,7 @@ import type { RepairDecision } from '../agents/RepairLoop.js';
 import type { AgentProposalFile } from '../agents/AgentProposalEngine.js';
 import { MemoryRepository } from '../memory/MemoryRepository.js';
 import { ProjectMemoryRetriever } from '../memory/ProjectMemoryRetriever.js';
+import { TaskMemoryRecorder } from '../memory/TaskMemoryRecorder.js';
 import { ProjectController, type ProjectCommand, type ProjectCommandResult } from '../project/ProjectController.js';
 import { ChangeSetService } from '../project/ChangeSetService.js';
 import { FileService } from '../project/FileService.js';
@@ -87,6 +88,7 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
   const memoryStorePath = options.memoryStorePath ?? process.env.IDLE_MEMORY_STORE_PATH ?? join(homedir(), '.idle', 'memory');
   const memoryRepository = new MemoryRepository(memoryStorePath);
   const memoryRetriever = new ProjectMemoryRetriever(memoryRepository);
+  const memoryRecorder = new TaskMemoryRecorder(memoryRepository);
   const generatedChangeSets = new Map<string, ChangeSet>();
   const agentExecutor = new AgentExecutor(projectService, fileService);
   const agentPlanner = new AgentPlanner();
@@ -197,7 +199,7 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
 
     generatedChangeSets.set(changeSet.id, changeSet);
     await taskService.checkpoint(request.id, { name: 'agent.changeset', data: changeSet });
-  }, undefined, executeMultiAgent, undefined);
+  }, undefined, executeMultiAgent, memoryRecorder);
 
   taskRunner.subscribe((event) => {
     const status = toContractStatus(event.status);
