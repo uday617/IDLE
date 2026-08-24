@@ -16,12 +16,12 @@ describe('ProjectMemoryRetriever', () => {
     const directory = await mkdtemp(join(tmpdir(), 'idle-project-memory-retriever-'));
     temporaryDirectories.push(directory);
     const repository = new MemoryRepository(directory);
-    await repository.saveProjectFact('Use PostgreSQL for persistence', {
+    await repository.saveProjectFact('project-1', 'Use PostgreSQL for persistence', {
       confidence: 0.95,
       source: 'verification',
       validated: true,
     });
-    await repository.saveProjectFact('Use Vitest for tests', {
+    await repository.saveProjectFact('project-1', 'Use Vitest for tests', {
       confidence: 0.9,
       source: 'user',
       validated: true,
