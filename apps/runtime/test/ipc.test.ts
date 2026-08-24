@@ -34,8 +34,8 @@ describe('runtime server', () => {
       status: 'queued',
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    await expect(server.getTask('task-ipc-1')).resolves.toMatchObject({
+    const result = await waitForTaskResult(server, 'task-ipc-1');
+    expect(result).toMatchObject({
       taskId: 'task-ipc-1',
       status: 'completed',
       changeSetId: 'changeset-task-ipc-1',
@@ -63,9 +63,7 @@ describe('runtime server', () => {
       }),
     ).resolves.toEqual({ taskId: 'task-proposal-1', status: 'queued' });
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
-
-    const result = await server.getTask('task-proposal-1');
+    const result = await waitForTaskResult(server, 'task-proposal-1');
     expect(result).toMatchObject({
       taskId: 'task-proposal-1',
       status: 'completed',
@@ -207,4 +205,14 @@ describe('runtime server', () => {
     await expect(stat(join(root, 'remove.txt'))).rejects.toThrow();
     await server.stop();
   });
+
+  async function waitForTaskResult(server, taskId, timeoutMs = 2_000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const result = await server.getTask(taskId);
+      if (result?.status === 'completed' || result?.status === 'failed') return result;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error(`Timed out waiting for task ${taskId}`);
+  }
 });
