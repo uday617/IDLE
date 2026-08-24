@@ -151,4 +151,21 @@ describe('AgentRuntime', () => {
       { role: 'user', content: 'Inspect the project' },
     ]);
   });
+
+  it('injects retrieved project memory before the task prompt', async () => {
+    const provider = fakeProvider({ content: 'done', toolCalls: [], finishReason: 'stop' });
+    const memory = {
+      retrieve: vi.fn(async () => [{ fact: 'Use PostgreSQL for persistence' }]),
+    };
+    const runtime = new AgentRuntime(provider, new ToolRegistry(), { memory });
+
+    await runtime.run({ taskId: 't8', projectId: 'p1', prompt: 'Inspect the persistence layer' });
+
+    expect(memory.retrieve).toHaveBeenCalledWith('p1', 'Inspect the persistence layer', 5);
+    const request = (provider.generate as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(request.messages).toEqual([
+      { role: 'system', content: 'Relevant project memory:\n- Use PostgreSQL for persistence' },
+      { role: 'user', content: 'Inspect the persistence layer' },
+    ]);
+  });
 });
