@@ -58,6 +58,27 @@ describe('AgentWorkspaceTools', () => {
     }]);
   });
 
+  it('accepts the model compatibility name propose_apply_file without writing to disk', async () => {
+    const files = {
+      read: vi.fn().mockResolvedValue({ path: 'IDLE_SMOKE.md', content: 'old content\n' }),
+    } as unknown as FileService;
+    const proposals = createAgentWorkspaceProposalBuffer();
+    const tools = createAgentWorkspaceTools(files, proposals);
+    const applyFile = tools.find((tool) => tool.name === 'propose_apply_file');
+
+    expect(applyFile).toBeDefined();
+    await expect(applyFile!.execute({ path: 'IDLE_SMOKE.md', content: 'new content\n' }, context)).resolves.toEqual({
+      content: 'Proposed file replacement: IDLE_SMOKE.md',
+    });
+    expect(files.read).toHaveBeenCalledWith('project-1', 'IDLE_SMOKE.md');
+    expect(proposals.changes).toEqual([{
+      operation: 'modify',
+      path: 'IDLE_SMOKE.md',
+      baseContent: 'old content\n',
+      hunks: [{ oldStart: 1, oldLines: ['old content', ''], newLines: ['new content', ''] }],
+    }]);
+  });
+
   it('rejects unsafe proposal paths', async () => {
     const files = {} as FileService;
     const proposals = createAgentWorkspaceProposalBuffer();
