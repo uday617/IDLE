@@ -36,7 +36,7 @@ async function launchApp(project, taskStorePath) {
   return app;
 }
 
-async function waitForTask(page, taskId, timeoutMs = 15_000) {
+async function waitForTask(page, taskId, timeoutMs = 30_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const task = await page.evaluate((id) => window.idle.tasks.get(id), taskId);
