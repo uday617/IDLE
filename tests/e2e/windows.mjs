@@ -42,6 +42,21 @@ async function waitForTask(page, taskId, timeoutMs = 15_000) {
   throw new Error(`Timed out waiting for task ${taskId}`);
 }
 
+async function waitForRecovery(taskStorePath, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const persisted = JSON.parse(await readFile(taskStorePath, 'utf8'));
+      const task = persisted.tasks?.['recovery-task'];
+      if (task?.status === 'paused') return task;
+    } catch {
+      // Runtime has not persisted the recovery result yet.
+    }
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 100));
+  }
+  throw new Error('Timed out waiting for recovery state to persist');
+}
+
 async function testOpenProjectAndSingleAgent() {
   const { directory, project } = await createFixtureCopy();
   const taskStorePath = join(directory, 'tasks.json');
@@ -127,14 +142,12 @@ async function testRuntimeRecoveryOnRestart() {
   const app = await launchApp(project, taskStorePath);
   try {
     await app.firstWindow();
+    const recovered = await waitForRecovery(taskStorePath);
+    assert.ok(recovered.error, 'unrecoverable task must retain a pause reason');
   } finally {
     await app.close();
+    await rm(directory, { recursive: true, force: true });
   }
-
-  const persisted = JSON.parse(await readFile(taskStorePath, 'utf8'));
-  assert.equal(persisted.tasks['recovery-task'].status, 'paused');
-  assert.ok(persisted.tasks['recovery-task'].error, 'unrecoverable task must retain a pause reason');
-  await rm(directory, { recursive: true, force: true });
 }
 
 async function assertText(page, text) {
