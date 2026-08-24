@@ -30,6 +30,16 @@ async function launchApp(project, taskStorePath) {
   });
 }
 
+async function waitForTask(page, taskId, timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const task = await page.evaluate((id) => window.idle.tasks.get(id), taskId);
+    if (task?.status === 'completed' || task?.status === 'failed') return task;
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 100));
+  }
+  throw new Error(`Timed out waiting for task ${taskId}`);
+}
+
 async function testOpenProjectAndSingleAgent() {
   const { directory, project } = await createFixtureCopy();
   const taskStorePath = join(directory, 'tasks.json');
@@ -50,7 +60,7 @@ async function testOpenProjectAndSingleAgent() {
     await taskInput.fill('Replace line "return 1;" with "return 2;" in file "src/bug.ts"');
     await taskInput.press('Enter');
     await page.getByText('Completed', { exact: true }).waitFor({ timeout: 15_000 });
-    await assertText(page, 'Changes are ready for review');
+    await assertText(page, 'Ready to apply');
   } finally {
     await app.close();
     await rm(directory, { recursive: true, force: true });
@@ -86,10 +96,9 @@ async function testMultiAgentTask() {
     }, { projectId: projectResult.id });
 
     assert.equal(result.status, 'queued');
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 1_500));
-    const task = await page.evaluate((taskId) => window.idle.tasks.get(taskId), result.taskId);
-    assert.equal(task?.status, 'completed');
-    assert.equal(task?.changeSet?.changes.length, 2);
+    const task = await waitForTask(page, result.taskId);
+    assert.equal(task.status, 'completed');
+    assert.equal(task.changeSet?.changes.length, 2);
   } finally {
     await app.close();
     await rm(directory, { recursive: true, force: true });
