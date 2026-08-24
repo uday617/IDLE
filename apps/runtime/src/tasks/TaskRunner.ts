@@ -93,7 +93,14 @@ export class TaskRunner {
         this.emit(current);
         const completed = await this.tasks.complete(task.id);
         this.emit(completed);
-        await this.recordMemory(task, completed);
+        if (current.projectId) {
+          await this.recordMemory({
+            id: current.id,
+            projectId: current.projectId,
+            ...(current.prompt !== undefined ? { prompt: current.prompt } : {}),
+            ...(current.checkpoint ? { checkpoint: current.checkpoint } : {}),
+          }, completed);
+        }
       } else if (current.status === 'paused') {
         this.emit(current);
       }
@@ -132,7 +139,7 @@ export class TaskRunner {
         projectId: request.projectId,
         status: task.status === 'completed' ? 'completed' : 'failed',
         ...(request.prompt !== undefined ? { prompt: request.prompt } : {}),
-        verification: task.status === 'completed' ? 'not-run' : 'not-run',
+        verification: 'not-run',
         ...(task.error ? { summary: task.error } : {}),
       });
     } catch {
