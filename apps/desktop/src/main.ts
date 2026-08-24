@@ -5,7 +5,7 @@ import { RuntimeClient } from './main/runtimeClient.js';
 let runtimeClient: RuntimeClient | null = null;
 const createWindow = () => { const window = new BrowserWindow({ width: 1440, height: 900, minWidth: 1100, minHeight: 700, webPreferences: { preload: join(__dirname, '../preload/preload.cjs'), contextIsolation: true, nodeIntegration: false } }); if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL); else void window.loadFile(join(__dirname, '../renderer/index.html')); };
 app.whenReady().then(() => {
-  const runtimePath = app.isPackaged ? join(process.resourcesPath, 'runtime', 'main.js') : join(app.getAppPath(), '../runtime/dist/main.js');
+  const runtimePath = app.isPackaged ? join(process.resourcesPath, 'runtime', 'main.js') : join(__dirname, '../../../runtime/dist/main.js');
   const taskStorePath = join(app.getPath('userData'), 'tasks.json');
   runtimeClient = new RuntimeClient(runtimePath, taskStorePath); runtimeClient.start();
   ipcMain.handle('project:open-dialog', async () => { const result = await dialog.showOpenDialog({ title: 'Open Project', properties: ['openDirectory'] }); if (result.canceled || result.filePaths.length === 0) return null; return runtimeClient?.request({ type: 'project.open', path: result.filePaths[0] }) ?? null; });
