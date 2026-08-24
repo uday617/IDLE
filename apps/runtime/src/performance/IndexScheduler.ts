@@ -26,8 +26,8 @@ interface Batch {
 interface ProjectState {
   pendingPaths: Set<string>;
   pendingWaiters: Waiter[];
-  timer?: ReturnType<typeof setTimeout>;
-  activeBatch?: Batch;
+  timer: ReturnType<typeof setTimeout> | undefined;
+  activeBatch: Batch | undefined;
 }
 
 export class IndexScheduler {
@@ -51,6 +51,8 @@ export class IndexScheduler {
     const state = this.states.get(change.projectId) ?? {
       pendingPaths: new Set<string>(),
       pendingWaiters: [],
+      timer: undefined,
+      activeBatch: undefined,
     };
     this.states.set(change.projectId, state);
 
