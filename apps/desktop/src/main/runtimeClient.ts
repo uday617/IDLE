@@ -22,7 +22,11 @@ export class RuntimeClient {
     if (this.process) return;
     const child = spawn(process.execPath, [this.runtimePath], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, ...(this.taskStorePath ? { IDLE_TASK_STORE_PATH: this.taskStorePath } : {}) },
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: '1',
+        ...(this.taskStorePath ? { IDLE_TASK_STORE_PATH: this.taskStorePath } : {}),
+      },
     });
     this.process = child;
     const lines = createInterface({ input: child.stdout });
@@ -37,7 +41,10 @@ export class RuntimeClient {
         if (message.error) request.reject(new Error(message.error)); else request.resolve(message.result ?? null);
       } catch { /* Ignore malformed runtime output; stderr is reserved for diagnostics. */ }
     });
-    child.on('exit', () => {
+    child.on('error', (error) => console.error('[idle-runtime] process error', error));
+    child.stderr.on('data', (chunk) => console.error(`[idle-runtime] ${chunk}`));
+    child.on('exit', (code, signal) => {
+      console.error(`[idle-runtime] exited code=${code ?? 'null'} signal=${signal ?? 'null'}`);
       this.process = null;
       for (const request of this.pending.values()) request.reject(new Error('Agent runtime stopped'));
       this.pending.clear();
