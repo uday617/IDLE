@@ -73,6 +73,10 @@ async function testOpenProjectAndSingleAgent() {
 
     const page = await app.firstWindow();
     await page.getByRole('button', { name: 'Open Project' }).click();
+    await assertText(page, 'sample-project');
+
+    const sourceDirectory = page.getByRole('button', { name: /src/ });
+    await sourceDirectory.click();
     await assertText(page, 'bug.ts');
 
     await page.getByRole('button', { name: '+ Quick Task' }).click();
