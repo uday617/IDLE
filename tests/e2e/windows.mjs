@@ -83,7 +83,16 @@ async function testOpenProjectAndSingleAgent() {
     const taskInput = page.getByPlaceholder(/Ask IDLE/);
     await taskInput.fill('Replace line "return 1;" with "return 2;" in file "src/bug.ts"');
     await taskInput.press('Enter');
-    await page.getByText('Completed', { exact: true }).waitFor({ timeout: 15_000 });
+
+    const taskId = await page.evaluate(() => {
+      const text = document.querySelector('.taskbar-hint')?.textContent ?? '';
+      return text.match(/Task ([0-9a-f-]{36})/)?.[1] ?? null;
+    });
+    assert.ok(taskId, 'UI should expose the submitted task id');
+
+    const task = await waitForTask(page, taskId);
+    assert.equal(task.status, 'completed', `single-agent task failed: ${task.error ?? 'unknown error'}`);
+    await page.getByText('Completed', { exact: true }).waitFor({ timeout: 5_000 });
     await assertText(page, 'Ready to apply');
   } finally {
     await app.close();
