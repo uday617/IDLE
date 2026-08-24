@@ -1,6 +1,7 @@
 import type { ChangeSet, TaskOrchestrationRequest } from '@idle/contracts';
 import type { ToolExecutionResult } from '../agents/tools/ToolExecutor.js';
 import type { CommandPolicy } from '../security/SecurityPolicy.js';
+import type { TaskMemoryRecorder } from '../memory/TaskMemoryRecorder.js';
 import type { TaskCheckpoint, TaskRecord, TaskService } from './TaskService.js';
 
 export interface TaskRunRequest {
@@ -37,6 +38,7 @@ export class TaskRunner {
     private readonly execute: TaskExecutor,
     private readonly executeCommand?: TaskCommandExecutor,
     private readonly executeMultiAgent?: TaskMultiAgentExecutor,
+    private readonly memoryRecorder?: Pick<TaskMemoryRecorder, 'record'>,
   ) {}
 
   subscribe(listener: TaskListener): () => void {
@@ -91,6 +93,7 @@ export class TaskRunner {
         this.emit(current);
         const completed = await this.tasks.complete(task.id);
         this.emit(completed);
+        await this.recordMemory(task, completed);
       } else if (current.status === 'paused') {
         this.emit(current);
       }
@@ -111,11 +114,29 @@ export class TaskRunner {
       await executor(request);
       const completed = await this.tasks.complete(request.id);
       this.emit(completed);
+      await this.recordMemory(request, completed);
       return completed;
     } catch (error) {
       const failed = await this.tasks.fail(request.id, error instanceof Error ? error : String(error));
       this.emit(failed);
+      await this.recordMemory(request, failed);
       return failed;
+    }
+  }
+
+  private async recordMemory(request: TaskRunRequest, task: TaskRecord): Promise<void> {
+    if (!this.memoryRecorder) return;
+    try {
+      await this.memoryRecorder.record({
+        taskId: task.id,
+        projectId: request.projectId,
+        status: task.status === 'completed' ? 'completed' : 'failed',
+        ...(request.prompt !== undefined ? { prompt: request.prompt } : {}),
+        verification: task.status === 'completed' ? 'not-run' : 'not-run',
+        ...(task.error ? { summary: task.error } : {}),
+      });
+    } catch {
+      // Memory must remain auxiliary to the task lifecycle.
     }
   }
 
