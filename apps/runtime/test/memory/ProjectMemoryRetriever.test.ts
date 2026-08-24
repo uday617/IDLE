@@ -30,7 +30,7 @@ describe('ProjectMemoryRetriever', () => {
     const retriever = new ProjectMemoryRetriever(repository);
 
     await expect(retriever.retrieve('project-1', 'PostgreSQL persistence', 5)).resolves.toEqual([
-      expect.objectContaining({ fact: 'Use PostgreSQL for persistence', projectId: 'project-1' }),
+      { fact: 'Use PostgreSQL for persistence' },
     ]);
   });
 });
