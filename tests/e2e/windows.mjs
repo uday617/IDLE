@@ -86,7 +86,7 @@ async function testOpenProjectAndSingleAgent() {
 
     await page.getByRole('button', { name: '+ Quick Task' }).click();
     const taskInput = page.getByPlaceholder(/Ask IDLE/);
-    await taskInput.fill('Replace line "return 1;" with "return 2;" in file "src/bug.ts"');
+    await taskInput.fill('Replace line "  return 1;" with "  return 2;" in file "src/bug.ts"');
     await taskInput.press('Enter');
 
     await assertText(page, 'Task 00000000');
