@@ -1,5 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
 import { AgentMemoryService } from '../../src/agent/AgentMemoryService.js';
+import { MemoryRepository } from '../../src/memory/MemoryRepository.js';
+
+const temporaryDirectories: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+});
 
 describe('AgentMemoryService', () => {
   it('stores and recalls memories for the same agent', () => {
@@ -33,5 +43,20 @@ describe('AgentMemoryService', () => {
     expect(memory.forget('agent-1', own.id)).toBe(true);
     expect(memory.recall('agent-1')).toEqual([]);
     expect(memory.recall('agent-2')).toEqual([other]);
+  });
+
+  it('restores agent-scoped memories after the service is recreated', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'idle-agent-memory-'));
+    temporaryDirectories.push(directory);
+    const repository = new MemoryRepository(directory);
+    const first = new AgentMemoryService(repository);
+    const saved = first.remember('agent-1', 'Use PostgreSQL for persistence', ['database']);
+    await first.flush();
+
+    const second = new AgentMemoryService(new MemoryRepository(directory));
+    await second.initialize();
+
+    expect(second.recall('agent-1')).toEqual([saved]);
+    expect(second.recall('agent-2')).toEqual([]);
   });
 });
