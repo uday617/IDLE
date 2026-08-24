@@ -6,7 +6,7 @@ let runtimeClient: RuntimeClient | null = null;
 const createWindow = () => { const window = new BrowserWindow({ width: 1440, height: 900, minWidth: 1100, minHeight: 700, webPreferences: { preload: join(__dirname, '../preload/preload.cjs'), contextIsolation: true, nodeIntegration: false } }); if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL); else void window.loadFile(join(__dirname, '../renderer/index.html')); };
 app.whenReady().then(() => {
   const runtimePath = process.env.IDLE_RUNTIME_PATH ?? (app.isPackaged ? join(process.resourcesPath, 'runtime', 'main.js') : join(__dirname, '../../../runtime/dist/main.js'));
-  const taskStorePath = join(app.getPath('userData'), 'tasks.json');
+  const taskStorePath = process.env.IDLE_TASK_STORE_PATH ?? join(app.getPath('userData'), 'tasks.json');
   runtimeClient = new RuntimeClient(runtimePath, taskStorePath); runtimeClient.start();
   ipcMain.handle('project:open-dialog', async () => { const result = await dialog.showOpenDialog({ title: 'Open Project', properties: ['openDirectory'] }); if (result.canceled || result.filePaths.length === 0) return null; return runtimeClient?.request({ type: 'project.open', path: result.filePaths[0] }) ?? null; });
   ipcMain.handle('project:files', async (_event, projectId: string, path: string) => runtimeClient?.request({ type: 'file.list', projectId, path }) ?? null);
