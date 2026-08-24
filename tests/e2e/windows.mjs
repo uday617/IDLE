@@ -92,7 +92,7 @@ async function testOpenProjectAndSingleAgent() {
     await assertText(page, 'Task 00000000');
     const task = await waitForTask(page, taskId);
     assert.equal(task.status, 'completed', `single-agent task failed: ${task.error ?? 'unknown error'}`);
-    await page.getByText('Completed', { exact: true }).waitFor({ timeout: 5_000 });
+    await page.locator('.status-ready').filter({ hasText: 'Completed' }).waitFor({ timeout: 5_000 });
     await assertText(page, 'Ready to apply');
   } finally {
     await app.close();
