@@ -9,6 +9,7 @@ import { _electron as electron } from 'playwright';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const fixture = join(root, 'tests', 'fixtures', 'sample-project');
 const desktopEntry = join(root, 'apps', 'desktop', 'out', 'main', 'main.js');
+const electronExecutable = join(root, 'apps', 'desktop', 'node_modules', 'electron', 'dist', 'electron.exe');
 
 async function createFixtureCopy() {
   const directory = await mkdtemp(join(tmpdir(), 'idle-e2e-'));
@@ -20,6 +21,7 @@ async function createFixtureCopy() {
 
 async function launchApp(project, taskStorePath) {
   return electron.launch({
+    executablePath: electronExecutable,
     args: [desktopEntry],
     cwd: join(root, 'apps', 'desktop'),
     env: {
