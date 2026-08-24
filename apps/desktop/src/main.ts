@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { ChangeSet, TaskStatusEvent, TaskSubmitRequest } from '@idle/contracts';
 import { RuntimeClient } from './main/runtimeClient.js';
 let runtimeClient: RuntimeClient | null = null;
-const createWindow = () => { const window = new BrowserWindow({ width: 1440, height: 900, minWidth: 1100, minHeight: 700, webPreferences: { preload: join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false } }); if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL); else void window.loadFile(join(__dirname, '../renderer/index.html')); };
+const createWindow = () => { const window = new BrowserWindow({ width: 1440, height: 900, minWidth: 1100, minHeight: 700, webPreferences: { preload: join(__dirname, 'preload.mjs'), contextIsolation: true, nodeIntegration: false } }); if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL); else void window.loadFile(join(__dirname, '../renderer/index.html')); };
 app.whenReady().then(() => {
   const runtimePath = app.isPackaged ? join(process.resourcesPath, 'runtime', 'main.js') : join(app.getAppPath(), '../runtime/dist/main.js');
   const taskStorePath = join(app.getPath('userData'), 'tasks.json');
