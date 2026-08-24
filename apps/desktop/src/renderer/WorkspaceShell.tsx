@@ -16,6 +16,26 @@ export function WorkspaceShell() {
   const [state, setState] = useState(initialProjectWorkspaceState); const [selectedFile, setSelectedFile] = useState<string | null>(null); const [taskPrompt, setTaskPrompt] = useState(''); const [inputMode, setInputMode] = useState<InputMode>('task'); const [taskId, setTaskId] = useState<TaskId | null>(null); const [taskStatus, setTaskStatus] = useState<TaskStatus | null>(null); const [taskError, setTaskError] = useState<string | null>(null); const [review, setReview] = useState<ChangeSetReviewResult | null>(null); const [changeSet, setChangeSet] = useState<ChangeSet | null>(null); const [applying, setApplying] = useState(false); const taskInputRef = useRef<HTMLInputElement>(null); const taskIdRef = useRef<TaskId | null>(null);
 
   useEffect(() => window.idle.tasks.subscribe((event: TaskStatusEvent) => { if (taskIdRef.current !== event.taskId) return; setTaskStatus(event.status); setTaskError(event.message ?? null); if (event.status === 'completed') void loadTaskResult(event.taskId); }), []);
+  useEffect(() => {
+    if (!taskId) return;
+    let cancelled = false;
+    const poll = async () => {
+      const result: TaskResult | null = await window.idle.tasks.get(taskId);
+      if (cancelled) return;
+      if (result?.status === 'completed' || result?.status === 'failed') {
+        setTaskStatus(result.status);
+        setTaskError(result.error ?? null);
+        if (result.status === 'completed') {
+          setReview(result.changeSetReview ?? null);
+          setChangeSet(result.changeSet ?? null);
+        }
+        return;
+      }
+      window.setTimeout(() => void poll(), 250);
+    };
+    void poll();
+    return () => { cancelled = true; };
+  }, [taskId]);
   const loadTaskResult = async (id: string) => { const result: TaskResult | null = await window.idle.tasks.get(id); if (!result) return; setReview(result.changeSetReview ?? null); setChangeSet(result.changeSet ?? null); };
   const openProject = async () => { setState(beginProjectOpen()); setSelectedFile(null); try { const opened = await window.idle.project.openDialog(); setState((current) => completeProjectOpen(current, opened)); } catch (cause) { setState((current) => failProjectOpen(current, cause instanceof Error ? cause.message : 'Unable to open project')); } };
   const focusInput = (mode: InputMode) => { setInputMode(mode); taskInputRef.current?.focus(); };
