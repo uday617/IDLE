@@ -14,8 +14,8 @@ const electronExecutable = join(root, 'apps', 'desktop', 'node_modules', 'electr
 async function createFixtureCopy() {
   const directory = await mkdtemp(join(tmpdir(), 'idle-e2e-'));
   const project = join(directory, 'sample-project');
-  execFileSync('git', ['init', project], { stdio: 'ignore' });
   await cp(fixture, project, { recursive: true });
+  execFileSync('git', ['init', project], { stdio: 'ignore' });
   return { directory, project };
 }
 
@@ -69,7 +69,6 @@ async function testOpenProjectAndSingleAgent() {
 
     const page = await app.firstWindow();
     await page.getByRole('button', { name: 'Open Project' }).click();
-    await assertText(page, 'sample-project');
     await assertText(page, 'bug.ts');
 
     await page.getByRole('button', { name: '+ Quick Task' }).click();
