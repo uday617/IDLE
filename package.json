@@ -15,5 +15,11 @@
   "devDependencies": {
     "electron-builder": "26.15.3",
     "playwright": "1.62.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
   }
 }
