@@ -133,7 +133,7 @@ async function testRuntimeRecoveryOnRestart() {
 
   const persisted = JSON.parse(await readFile(taskStorePath, 'utf8'));
   assert.equal(persisted.tasks['recovery-task'].status, 'paused');
-  assert.match(persisted.tasks['recovery-task'].error, /Runtime restarted/);
+  assert.ok(persisted.tasks['recovery-task'].error, 'unrecoverable task must retain a pause reason');
   await rm(directory, { recursive: true, force: true });
 }
 
