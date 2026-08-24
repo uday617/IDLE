@@ -9,6 +9,7 @@ import { _electron as electron } from 'playwright';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const fixture = join(root, 'tests', 'fixtures', 'sample-project');
 const desktopEntry = join(root, 'apps', 'desktop', 'out', 'main', 'main.js');
+const runtimeBundle = join(root, 'apps', 'desktop', 'runtime-bundle', 'main.js');
 const electronExecutable = join(root, 'apps', 'desktop', 'node_modules', 'electron', 'dist', 'electron.exe');
 
 async function createFixtureCopy() {
@@ -28,6 +29,7 @@ async function launchApp(project, taskStorePath) {
       ...process.env,
       IDLE_AGENT_MODE: 'deterministic',
       IDLE_TASK_STORE_PATH: taskStorePath,
+      IDLE_RUNTIME_PATH: runtimeBundle,
     },
   });
   app.on('console', (message) => console.log(`[electron:${message.type()}] ${message.text()}`));
