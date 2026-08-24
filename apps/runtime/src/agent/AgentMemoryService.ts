@@ -1,3 +1,5 @@
+import type { MemoryRepository, StoredAgentMemory } from '../memory/MemoryRepository.js';
+
 export interface MemoryEntry {
   id: string;
   agentId: string;
@@ -13,6 +15,22 @@ export interface MemoryQuery {
 
 export class AgentMemoryService {
   private readonly entries = new Map<string, MemoryEntry>();
+  private writeQueue: Promise<void> = Promise.resolve();
+  private initialized = false;
+
+  constructor(private readonly repository?: MemoryRepository) {}
+
+  async initialize(): Promise<void> {
+    if (this.initialized || !this.repository) {
+      this.initialized = true;
+      return;
+    }
+
+    const stored = await this.repository.listAgentMemory();
+    this.entries.clear();
+    for (const entry of stored) this.entries.set(entry.id, this.fromStored(entry));
+    this.initialized = true;
+  }
 
   remember(agentId: string, content: string, tags: readonly string[] = []): MemoryEntry {
     const entry: MemoryEntry = {
@@ -23,6 +41,9 @@ export class AgentMemoryService {
       createdAt: Date.now(),
     };
     this.entries.set(entry.id, entry);
+    if (this.repository) {
+      this.writeQueue = this.writeQueue.then(() => this.repository!.saveAgentMemory(this.toStored(entry)));
+    }
     return entry;
   }
 
@@ -38,6 +59,34 @@ export class AgentMemoryService {
   forget(agentId: string, memoryId: string): boolean {
     const entry = this.entries.get(memoryId);
     if (!entry || entry.agentId !== agentId) return false;
-    return this.entries.delete(memoryId);
+    const deleted = this.entries.delete(memoryId);
+    if (deleted && this.repository) {
+      this.writeQueue = this.writeQueue.then(() => this.repository!.deleteAgentMemory(agentId, memoryId).then(() => undefined));
+    }
+    return deleted;
+  }
+
+  async flush(): Promise<void> {
+    await this.writeQueue;
+  }
+
+  private toStored(entry: MemoryEntry): StoredAgentMemory {
+    return {
+      id: entry.id,
+      agentId: entry.agentId,
+      content: entry.content,
+      tags: [...entry.tags],
+      createdAt: entry.createdAt,
+    };
+  }
+
+  private fromStored(entry: StoredAgentMemory): MemoryEntry {
+    return {
+      id: entry.id,
+      agentId: entry.agentId,
+      content: entry.content,
+      tags: [...entry.tags],
+      createdAt: entry.createdAt,
+    };
   }
 }
