@@ -123,7 +123,7 @@ async function testMultiAgentTask() {
           'export const agentOne = true;',
           'SUBTASK 2: Create file "src/agent-two.ts" with content:',
           'export const agentTwo = true;',
-        ].join('\\n'),
+        ].join('\n'),
         orchestration: { enabled: true, maxAgents: 2 },
       });
     }, { projectId: projectResult.id });
