@@ -9,7 +9,7 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "agent:smoke": "pnpm --filter @idle/runtime build && node scripts/real-agent-local-smoke.mjs",
-    "e2e:windows": "pnpm --filter @idle/runtime... build && pnpm --filter @idle/desktop build && node tests/e2e/windows.mjs",
+    "e2e:windows": "pnpm dlx esbuild apps/runtime/src/main.ts --bundle --platform=node --format=esm --outfile=apps/desktop/runtime-bundle/main.js && pnpm --filter @idle/desktop build && node tests/e2e/windows.mjs",
     "package:windows": "pnpm dlx esbuild apps/runtime/src/main.ts --bundle --platform=node --format=esm --outfile=apps/desktop/runtime-bundle/main.js && pnpm --filter @idle/desktop build && pnpm exec electron-builder --win nsis --projectDir apps/desktop --config electron-builder.yml"
   },
   "devDependencies": {
