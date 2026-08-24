@@ -20,7 +20,7 @@ async function createFixtureCopy() {
 }
 
 async function launchApp(project, taskStorePath) {
-  return electron.launch({
+  const app = await electron.launch({
     executablePath: electronExecutable,
     args: [desktopEntry],
     cwd: join(root, 'apps', 'desktop'),
@@ -30,6 +30,8 @@ async function launchApp(project, taskStorePath) {
       IDLE_TASK_STORE_PATH: taskStorePath,
     },
   });
+  app.on('console', (message) => console.log(`[electron:${message.type()}] ${message.text()}`));
+  return app;
 }
 
 async function waitForTask(page, taskId, timeoutMs = 15_000) {
