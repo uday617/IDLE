@@ -15,6 +15,14 @@ export interface StoredTaskMemory<T = unknown> {
   createdAt: number;
 }
 
+export interface StoredAgentMemory {
+  id: string;
+  agentId: string;
+  content: string;
+  tags: readonly string[];
+  createdAt: number;
+}
+
 export interface ProjectFact<T = string> {
   id: string;
   projectId: string;
@@ -26,10 +34,11 @@ export interface ProjectFact<T = string> {
 
 interface MemoryStore {
   taskMemory: StoredTaskMemory[];
+  agentMemory: StoredAgentMemory[];
   projectFacts: ProjectFact[];
 }
 
-const EMPTY_STORE: MemoryStore = { taskMemory: [], projectFacts: [] };
+const EMPTY_STORE: MemoryStore = { taskMemory: [], agentMemory: [], projectFacts: [] };
 
 export class MemoryRepository {
   private readonly filePath: string;
@@ -49,6 +58,28 @@ export class MemoryRepository {
   async listTaskMemory<T>(taskId: string): Promise<T[]> {
     const store = await this.load();
     return store.taskMemory.filter((item) => item.taskId === taskId).map((item) => item.entry as T);
+  }
+
+  async saveAgentMemory(entry: StoredAgentMemory): Promise<void> {
+    const store = await this.load();
+    const existingIndex = store.agentMemory.findIndex((item) => item.id === entry.id);
+    if (existingIndex >= 0) store.agentMemory[existingIndex] = entry;
+    else store.agentMemory.push(entry);
+    await this.persist();
+  }
+
+  async listAgentMemory(): Promise<StoredAgentMemory[]> {
+    const store = await this.load();
+    return store.agentMemory.map((entry) => ({ ...entry, tags: [...entry.tags] }));
+  }
+
+  async deleteAgentMemory(agentId: string, memoryId: string): Promise<boolean> {
+    const store = await this.load();
+    const index = store.agentMemory.findIndex((item) => item.id === memoryId && item.agentId === agentId);
+    if (index < 0) return false;
+    store.agentMemory.splice(index, 1);
+    await this.persist();
+    return true;
   }
 
   async saveProjectFact<T>(
@@ -98,7 +129,12 @@ export class MemoryRepository {
     if (this.store) return this.store;
     try {
       const content = await readFile(this.filePath, 'utf8');
-      this.store = JSON.parse(content) as MemoryStore;
+      const parsed = JSON.parse(content) as Partial<MemoryStore>;
+      this.store = {
+        taskMemory: parsed.taskMemory ?? [],
+        agentMemory: parsed.agentMemory ?? [],
+        projectFacts: parsed.projectFacts ?? [],
+      };
     } catch (error) {
       const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
       if (code !== 'ENOENT') throw error;
