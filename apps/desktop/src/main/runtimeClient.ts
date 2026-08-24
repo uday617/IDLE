@@ -37,9 +37,10 @@ export class RuntimeClient {
         if (message.error) request.reject(new Error(message.error)); else request.resolve(message.result ?? null);
       } catch { /* Ignore malformed runtime output; stderr is reserved for diagnostics. */ }
     });
-    child.stderr.on('data', (chunk) => process.stderr.write(`[idle-runtime] ${chunk}`));
+    child.on('error', (error) => console.error('[idle-runtime] process error', error));
+    child.stderr.on('data', (chunk) => console.error(`[idle-runtime] ${chunk}`));
     child.on('exit', (code, signal) => {
-      process.stderr.write(`[idle-runtime] exited code=${code ?? 'null'} signal=${signal ?? 'null'}\n`);
+      console.error(`[idle-runtime] exited code=${code ?? 'null'} signal=${signal ?? 'null'}`);
       this.process = null;
       for (const request of this.pending.values()) request.reject(new Error('Agent runtime stopped'));
       this.pending.clear();
