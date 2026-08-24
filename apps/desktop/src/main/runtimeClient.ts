@@ -22,7 +22,11 @@ export class RuntimeClient {
     if (this.process) return;
     const child = spawn(process.execPath, [this.runtimePath], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, ...(this.taskStorePath ? { IDLE_TASK_STORE_PATH: this.taskStorePath } : {}) },
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: '1',
+        ...(this.taskStorePath ? { IDLE_TASK_STORE_PATH: this.taskStorePath } : {}),
+      },
     });
     this.process = child;
     const lines = createInterface({ input: child.stdout });
