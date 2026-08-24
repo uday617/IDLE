@@ -2,7 +2,7 @@ import { createInterface } from 'node:readline';
 import { RUNTIME_VERSION } from './index.js';
 import { createRuntimeServer } from './ipc/server.js';
 import type { AgentProposalFile } from './agents/AgentProposalEngine.js';
-import type { FailureContext, ProjectId, TaskId, TaskOrchestrationRequest, TaskStatusEvent, TaskSubmitRequest } from '@idle/contracts';
+import type { FailureContext, ProjectId, TaskId, TaskStatusEvent, TaskSubmitRequest } from '@idle/contracts';
 import type { ProjectCommand } from './project/ProjectController.js';
 
 const taskStorePath = process.env.IDLE_TASK_STORE_PATH;
@@ -29,7 +29,6 @@ interface RuntimeRequest {
   projectId?: string;
   taskId?: string;
   prompt?: string;
-  orchestration?: TaskOrchestrationRequest;
   failure?: FailureContext;
   files?: readonly AgentProposalFile[];
   changeSetId?: string;
@@ -53,7 +52,6 @@ lines.on('line', async (line) => {
         taskId: request.taskId as TaskId,
         projectId: request.projectId as ProjectId,
         prompt: request.prompt ?? '',
-        ...(request.orchestration ? { orchestration: request.orchestration } : {}),
       };
       result = await server.submitTask(taskRequest);
     } else if (request.type === 'task.get') {
