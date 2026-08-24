@@ -121,6 +121,7 @@ async function testMultiAgentTask() {
         prompt: [
           'SUBTASK 1: Create file "src/agent-one.ts" with content:',
           'export const agentOne = true;',
+          '',
           'SUBTASK 2: Create file "src/agent-two.ts" with content:',
           'export const agentTwo = true;',
         ].join('\n'),
