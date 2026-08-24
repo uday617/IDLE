@@ -149,6 +149,44 @@ export function createAgentWorkspaceTools(
     },
   };
 
+  // Some local coding models use this conventional name for a reviewable
+  // whole-file proposal. Keep it proposal-only: it never writes to disk.
+  const applyFile: AgentTool = {
+    name: 'propose_apply_file',
+    description: 'Compatibility alias for proposing a complete file replacement. This never writes to disk; the proposal must be reviewed before apply.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        content: { type: 'string' },
+      },
+      required: ['path', 'content'],
+      additionalProperties: false,
+    },
+    async execute(arguments_: Record<string, unknown>, context: AgentToolContext) {
+      const path = stringArgument(arguments_, 'path');
+      const content = arguments_.content;
+      if (typeof content !== 'string') throw new Error('content must be a string');
+      assertSafePath(path);
+
+      const state = await files.readState(context.projectId, path);
+      if (!state.exists) {
+        proposals.add({ operation: 'create', path, baseContent: null, content });
+        return { content: `Proposed create: ${path}` };
+      }
+
+      const oldLines = state.content.split(/\r?\n/);
+      const newLines = content.split(/\r?\n/);
+      proposals.add({
+        operation: 'modify',
+        path,
+        baseContent: state.content,
+        hunks: [{ oldStart: 1, oldLines, newLines }],
+      });
+      return { content: `Proposed file replacement: ${path}` };
+    },
+  };
+
   // Compatibility with agents that use the conventional root-listing tool name.
   // Keep list_files as the parameterized API while allowing root discovery
   // without requiring the model to invent a path argument.
@@ -166,5 +204,5 @@ export function createAgentWorkspaceTools(
     },
   };
 
-  return [listFiles, readFile, createFile, replaceLine, deleteFile, listRoots];
+  return [listFiles, readFile, createFile, replaceLine, deleteFile, applyFile, listRoots];
 }
