@@ -3,10 +3,11 @@ import { AgentRuntime } from './AgentRuntime.js';
 
 const provider = {
   generate: async ({ messages }: { messages: Array<{ role: string; content: string }> }) => {
-    expect(messages).toHaveLength(3);
-    expect(messages[1]?.role).toBe('system');
-    expect(messages[1]?.content).toContain('Relevant project context:');
-    expect(messages[1]?.content).toContain('auth.ts');
+    expect(messages).toHaveLength(2);
+    expect(messages[0]?.role).toBe('system');
+    expect(messages[0]?.content).toContain('Relevant project context:');
+    expect(messages[0]?.content).toContain('auth.ts');
+    expect(messages[1]?.role).toBe('user');
     return { content: 'done', finishReason: 'stop' as const, toolCalls: [] };
   },
 };
