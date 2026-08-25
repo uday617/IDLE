@@ -1,5 +1,5 @@
-import { readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { readFile, readdir, rename, stat, unlink, writeFile, realpath, lstat } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import type { ProjectService } from './ProjectService.js';
 
 export interface FileEntry {
@@ -38,6 +38,7 @@ export class FileService {
     const requested = relativePath === '.' ? root : resolve(root, relativePath);
     const fromRoot = relative(root, requested);
     this.assertInsideProject(fromRoot);
+    await this.assertRealPathInsideProject(root, requested);
     const entries = await readdir(requested, { withFileTypes: true });
     return entries.filter((entry) => !entry.isSymbolicLink()).map((entry): FileEntry => ({
       name: entry.name,
@@ -53,6 +54,7 @@ export class FileService {
     const project = await this.projects.get(projectId);
     if (!project) throw new Error(`Project not found: ${projectId}`);
     const requested = this.resolveFilePath(project.path, relativePath);
+    await this.assertRealPathInsideProject(project.path, requested);
     const info = await stat(requested);
     if (!info.isFile()) throw new Error(`Path is not a file: ${relativePath}`);
     return { path: relative(resolve(project.path), requested), content: await readFile(requested, 'utf8') };
@@ -62,6 +64,7 @@ export class FileService {
     const project = await this.projects.get(projectId);
     if (!project) throw new Error(`Project not found: ${projectId}`);
     const requested = this.resolveFilePath(project.path, relativePath);
+    await this.assertRealPathInsideProject(project.path, requested);
     try {
       const info = await stat(requested);
       if (!info.isFile()) throw new Error(`Path is not a file: ${relativePath}`);
@@ -98,6 +101,7 @@ export class FileService {
 
     for (const operation of operations) {
       const requested = this.resolveFilePath(root, operation.path);
+      await this.assertRealPathInsideProject(root, requested);
       const fromRoot = relative(root, requested);
       if (seen.has(fromRoot)) throw new Error(`Duplicate file operation: ${operation.path}`);
       seen.add(fromRoot);
@@ -139,6 +143,35 @@ export class FileService {
     const fromRoot = relative(root, requested);
     this.assertInsideProject(fromRoot);
     return requested;
+  }
+
+  private async assertRealPathInsideProject(rootPath: string, requested: string): Promise<void> {
+    const root = await realpath(rootPath);
+    let candidate = requested;
+
+    while (true) {
+      try {
+        const resolved = await realpath(candidate);
+        this.assertInsideProject(relative(root, resolved));
+        return;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+
+        const parent = dirname(candidate);
+        if (parent === candidate) throw error;
+
+        const entry = await lstat(candidate).catch((entryError: unknown) => {
+          if ((entryError as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+          throw entryError;
+        });
+        if (entry?.isSymbolicLink()) throw new Error('Path is outside the project');
+
+        const resolvedParent = await realpath(parent);
+        this.assertInsideProject(relative(root, resolvedParent));
+        if (basename(candidate) === '') return;
+        candidate = parent;
+      }
+    }
   }
 
   private assertInsideProject(fromRoot: string): void {
