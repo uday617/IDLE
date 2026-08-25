@@ -1,9 +1,13 @@
 import { createInterface } from 'node:readline';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { RUNTIME_VERSION } from './index.js';
 import { createRuntimeServer } from './ipc/server.js';
 import type { AgentProposalFile } from './agents/AgentProposalEngine.js';
 import type { FailureContext, ProjectId, TaskId, TaskOrchestrationRequest, TaskStatusEvent, TaskSubmitRequest } from '@idle/contracts';
 import type { ProjectCommand } from './project/ProjectController.js';
+
+process.env.IDLE_PROJECT_STORE_PATH ??= join(homedir(), '.idle', 'projects.json');
 
 const taskStorePath = process.env.IDLE_TASK_STORE_PATH;
 const server = createRuntimeServer(
