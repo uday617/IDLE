@@ -30,6 +30,32 @@ describe('TaskRunner', () => {
     expect(result.error).toBe('execution failed');
   });
 
+  it('records the completed task outcome without changing task behavior', async () => {
+    const service = new TaskService();
+    const recorder = { record: vi.fn(async () => undefined) };
+    const runner = new TaskRunner(service, async () => undefined, undefined, undefined, recorder);
+
+    const result = await runner.submit({ id: 'task-memory-1', projectId: 'project-1', prompt: 'Fix parser' });
+
+    expect(result.status).toBe('completed');
+    expect(recorder.record).toHaveBeenCalledWith(expect.objectContaining({
+      taskId: 'task-memory-1',
+      projectId: 'project-1',
+      status: 'completed',
+      prompt: 'Fix parser',
+    }));
+  });
+
+  it('does not fail a task when memory recording fails', async () => {
+    const service = new TaskService();
+    const recorder = { record: vi.fn(async () => { throw new Error('memory unavailable'); }) };
+    const runner = new TaskRunner(service, async () => undefined, undefined, undefined, recorder);
+
+    const result = await runner.submit({ id: 'task-memory-2', projectId: 'project-1', prompt: 'Run tests' });
+
+    expect(result.status).toBe('completed');
+  });
+
   it('returns persisted task records by id', async () => {
     const service = new TaskService();
     const runner = new TaskRunner(service, async () => undefined);

@@ -1,4 +1,6 @@
 import type { ChangeSet, FailureContext, TaskResult, TaskStatusEvent, TaskSubmitRequest, TaskSubmitResult } from '@idle/contracts';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import type { CommandPolicy } from '../security/SecurityPolicy.js';
 import { SecurityPolicy } from '../security/SecurityPolicy.js';
 import { SecureCommandExecutor } from '../security/SecureCommandExecutor.js';
@@ -16,6 +18,11 @@ import { RepairCoordinator } from '../agents/RepairCoordinator.js';
 import { MultiAgentCoordinator } from '../orchestration/MultiAgentCoordinator.js';
 import type { RepairDecision } from '../agents/RepairLoop.js';
 import type { AgentProposalFile } from '../agents/AgentProposalEngine.js';
+import { MemoryRepository } from '../memory/MemoryRepository.js';
+import { ProjectMemoryRetriever } from '../memory/ProjectMemoryRetriever.js';
+import { ProjectMemory } from '../memory/ProjectMemory.js';
+import { TaskMemoryRecorder } from '../memory/TaskMemoryRecorder.js';
+import { TaskLearningService } from '../learning/TaskLearningService.js';
 import { ProjectController, type ProjectCommand, type ProjectCommandResult } from '../project/ProjectController.js';
 import { ChangeSetService } from '../project/ChangeSetService.js';
 import { FileService } from '../project/FileService.js';
@@ -40,6 +47,7 @@ export interface RuntimeServer {
 
 export interface RuntimeServerOptions {
   taskStorePath?: string;
+  memoryStorePath?: string;
   repairAgent?: RepairAgent;
   repairVerifier?: RepairVerifier;
   repairVerification?: {
@@ -79,6 +87,15 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
   const projectController = new ProjectController(projectService, fileService, changeSetService);
   const taskListeners = new Set<(event: TaskStatusEvent) => void>();
   const taskService = new TaskService(options.taskStorePath);
+  const memoryStorePath = options.memoryStorePath ?? process.env.IDLE_MEMORY_STORE_PATH ?? join(homedir(), '.idle', 'memory');
+  const memoryRepository = new MemoryRepository(memoryStorePath);
+  const memoryRetriever = new ProjectMemoryRetriever(memoryRepository);
+  const memoryRecorder = new TaskMemoryRecorder(memoryRepository, {
+    async learn(outcome) {
+      const learning = new TaskLearningService(new ProjectMemory(outcome.projectId, memoryRepository));
+      await learning.learnFromOutcome(outcome);
+    },
+  });
   const generatedChangeSets = new Map<string, ChangeSet>();
   const agentExecutor = new AgentExecutor(projectService, fileService);
   const agentPlanner = new AgentPlanner();
@@ -90,10 +107,11 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
     ? new RepairAgent(new AgentRuntime(llmProvider, new ToolRegistry(), {
       maxTurns: 4,
       systemPrompt: REPAIR_AGENT_SYSTEM_PROMPT,
+      memory: memoryRetriever,
     }))
     : undefined);
   const repairCoordinator = repairAgent
-    ? new RepairCoordinator(taskService, { repairAgent })
+    ? new RepairCoordinator(taskService, { repairAgent, memoryRecorder })
     : undefined;
   const commandRepairVerifier = options.repairVerification
     ? new CommandRepairVerifier(new SecureCommandExecutor(SecurityPolicy, options.repairVerification.policy))
@@ -112,6 +130,7 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
         const runtime = new AgentRuntime(llmProvider, registry, {
           maxTurns: 8,
           systemPrompt: REAL_AGENT_SYSTEM_PROMPT,
+          memory: memoryRetriever,
         });
         const agent = await runtime.run({
           taskId: subtask.id,
@@ -165,6 +184,7 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
       const runtime = new AgentRuntime(llmProvider, registry, {
         maxTurns: 8,
         systemPrompt: REAL_AGENT_SYSTEM_PROMPT,
+        memory: memoryRetriever,
       });
       const agent = await runtime.run({
         taskId: request.id,
@@ -186,7 +206,7 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
 
     generatedChangeSets.set(changeSet.id, changeSet);
     await taskService.checkpoint(request.id, { name: 'agent.changeset', data: changeSet });
-  }, undefined, executeMultiAgent);
+  }, undefined, executeMultiAgent, memoryRecorder);
 
   taskRunner.subscribe((event) => {
     const status = toContractStatus(event.status);

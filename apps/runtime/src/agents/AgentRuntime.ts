@@ -15,16 +15,27 @@ export interface AgentRunResult {
   error?: string;
 }
 
+export interface AgentMemoryItem {
+  fact: unknown;
+}
+
+export interface AgentMemoryRetriever {
+  retrieve(projectId: string, query: string, limit: number): Promise<readonly AgentMemoryItem[]>;
+}
+
 export interface AgentRuntimeOptions {
   maxTurns?: number;
   systemPrompt?: string;
+  memory?: AgentMemoryRetriever;
 }
 
 const DEFAULT_MAX_TURNS = 8;
+const DEFAULT_MEMORY_LIMIT = 5;
 
 export class AgentRuntime {
   private readonly maxTurns: number;
   private readonly systemPrompt: string | undefined;
+  private readonly memory: AgentMemoryRetriever | undefined;
 
   constructor(
     private readonly provider: LLMProvider,
@@ -33,6 +44,7 @@ export class AgentRuntime {
   ) {
     this.maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
     this.systemPrompt = options.systemPrompt;
+    this.memory = options.memory;
     if (!Number.isInteger(this.maxTurns) || this.maxTurns < 1) {
       throw new Error('maxTurns must be a positive integer');
     }
@@ -41,6 +53,21 @@ export class AgentRuntime {
   async run(request: AgentRunRequest): Promise<AgentRunResult> {
     const messages: LLMMessage[] = [];
     if (this.systemPrompt) messages.push({ role: 'system', content: this.systemPrompt });
+
+    if (this.memory) {
+      try {
+        const memories = await this.memory.retrieve(request.projectId, request.prompt, DEFAULT_MEMORY_LIMIT);
+        if (memories.length > 0) {
+          messages.push({
+            role: 'system',
+            content: `Relevant project memory:\n${memories.map((memory) => `- ${this.formatMemory(memory.fact)}`).join('\n')}`,
+          });
+        }
+      } catch {
+        // Memory is auxiliary context and must never block the task path.
+      }
+    }
+
     messages.push({ role: 'user', content: request.prompt });
     const tools = this.tools.definitions();
 
@@ -125,5 +152,14 @@ export class AgentRuntime {
       turns: this.maxTurns,
       error: `Agent reached the maximum turn limit of ${this.maxTurns}`,
     };
+  }
+
+  private formatMemory(fact: unknown): string {
+    if (typeof fact === 'string') return fact;
+    try {
+      return JSON.stringify(fact);
+    } catch {
+      return String(fact);
+    }
   }
 }
