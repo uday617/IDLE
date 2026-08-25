@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import type { ProjectService } from './ProjectService.js';
 import type { ProjectGraph } from './ProjectGraph.js';
 import type { ProjectLanguageService } from './ProjectLanguageService.js';
