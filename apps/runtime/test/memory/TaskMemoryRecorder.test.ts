@@ -38,4 +38,39 @@ describe('TaskMemoryRecorder', () => {
       },
     ]);
   });
+
+  it('invokes the optional learner for verified outcomes without making learning fatal', async () => {
+    const learned: string[] = [];
+    const recorder = new TaskMemoryRecorder(createRepository(), {
+      learn: async (outcome) => {
+        learned.push(outcome.taskId);
+      },
+    });
+
+    await recorder.record({
+      taskId: 'task-verified',
+      projectId: 'project-1',
+      status: 'completed',
+      verification: 'passed',
+      summary: 'Verified lesson.',
+    });
+
+    expect(learned).toEqual(['task-verified']);
+  });
+
+  it('swallows learner failures', async () => {
+    const recorder = new TaskMemoryRecorder(createRepository(), {
+      learn: async () => {
+        throw new Error('learning failed');
+      },
+    });
+
+    await expect(recorder.record({
+      taskId: 'task-safe',
+      projectId: 'project-1',
+      status: 'completed',
+      verification: 'passed',
+      summary: 'Task still succeeds.',
+    })).resolves.toBeUndefined();
+  });
 });
