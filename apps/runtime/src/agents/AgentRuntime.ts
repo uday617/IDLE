@@ -23,19 +23,45 @@ export interface AgentMemoryRetriever {
   retrieve(projectId: string, query: string, limit: number): Promise<readonly AgentMemoryItem[]>;
 }
 
+export interface AgentProjectContextFile {
+  path: string;
+  content: string;
+  score: number;
+  tokensEstimate: number;
+}
+
+export interface AgentProjectContext {
+  files: readonly AgentProjectContextFile[];
+  totalChars: number;
+  totalTokensEstimate: number;
+}
+
+export interface AgentProjectContextRetriever {
+  retrieve(
+    projectId: string,
+    query: string,
+    options?: { maxFiles?: number; maxChars?: number; maxTokens?: number },
+  ): Promise<AgentProjectContext>;
+}
+
 export interface AgentRuntimeOptions {
   maxTurns?: number;
   systemPrompt?: string;
   memory?: AgentMemoryRetriever;
+  projectContext?: AgentProjectContextRetriever;
 }
 
 const DEFAULT_MAX_TURNS = 8;
 const DEFAULT_MEMORY_LIMIT = 5;
+const DEFAULT_PROJECT_CONTEXT_FILES = 6;
+const DEFAULT_PROJECT_CONTEXT_CHARS = 12_000;
+const DEFAULT_PROJECT_CONTEXT_TOKENS = 3_000;
 
 export class AgentRuntime {
   private readonly maxTurns: number;
   private readonly systemPrompt: string | undefined;
   private readonly memory: AgentMemoryRetriever | undefined;
+  private readonly projectContext: AgentProjectContextRetriever | undefined;
 
   constructor(
     private readonly provider: LLMProvider,
@@ -45,6 +71,7 @@ export class AgentRuntime {
     this.maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
     this.systemPrompt = options.systemPrompt;
     this.memory = options.memory;
+    this.projectContext = options.projectContext;
     if (!Number.isInteger(this.maxTurns) || this.maxTurns < 1) {
       throw new Error('maxTurns must be a positive integer');
     }
@@ -65,6 +92,24 @@ export class AgentRuntime {
         }
       } catch {
         // Memory is auxiliary context and must never block the task path.
+      }
+    }
+
+    if (this.projectContext) {
+      try {
+        const context = await this.projectContext.retrieve(request.projectId, request.prompt, {
+          maxFiles: DEFAULT_PROJECT_CONTEXT_FILES,
+          maxChars: DEFAULT_PROJECT_CONTEXT_CHARS,
+          maxTokens: DEFAULT_PROJECT_CONTEXT_TOKENS,
+        });
+        if (context.files.length > 0) {
+          messages.push({
+            role: 'system',
+            content: this.formatProjectContext(context),
+          });
+        }
+      } catch {
+        // Project intelligence is auxiliary context and must never block the task path.
       }
     }
 
@@ -161,5 +206,12 @@ export class AgentRuntime {
     } catch {
       return String(fact);
     }
+  }
+
+  private formatProjectContext(context: AgentProjectContext): string {
+    const files = context.files
+      .map((file) => `### ${file.path}\n${file.content}`)
+      .join('\n\n');
+    return `Relevant project context:\n${files}`;
   }
 }
