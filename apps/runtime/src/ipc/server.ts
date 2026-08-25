@@ -111,7 +111,7 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
     }))
     : undefined);
   const repairCoordinator = repairAgent
-    ? new RepairCoordinator(taskService, { repairAgent })
+    ? new RepairCoordinator(taskService, { repairAgent, memoryRecorder })
     : undefined;
   const commandRepairVerifier = options.repairVerification
     ? new CommandRepairVerifier(new SecureCommandExecutor(SecurityPolicy, options.repairVerification.policy))
