@@ -31,7 +31,6 @@ describe('TaskRunner restart recovery', () => {
     });
 
     await expect(runner.resumePendingTasks()).resolves.toEqual(['task-1']);
-    await expect(restartedTasks.get('task-1')).resolves;
     expect(restartedTasks.get('task-1')?.status).toBe('completed');
     expect(restartedTasks.get('task-1')?.checkpoint?.name).toBe('agent.resumed');
   });
