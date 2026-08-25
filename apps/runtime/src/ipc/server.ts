@@ -26,7 +26,15 @@ import { TaskLearningService } from '../learning/TaskLearningService.js';
 import { ProjectController, type ProjectCommand, type ProjectCommandResult } from '../project/ProjectController.js';
 import { ChangeSetService } from '../project/ChangeSetService.js';
 import { FileService } from '../project/FileService.js';
+import { LanguageAdapterRegistry } from '../project/LanguageAdapterRegistry.js';
+import { ProjectGraph } from '../project/ProjectGraph.js';
+import { ProjectGraphRepository } from '../project/ProjectGraphRepository.js';
+import { ProjectIndexer } from '../project/ProjectIndexer.js';
+import { ProjectIntelligenceService } from '../project/ProjectIntelligenceService.js';
+import { ProjectLanguageService } from '../project/ProjectLanguageService.js';
+import { ProjectScanner } from '../project/ProjectScanner.js';
 import { ProjectService } from '../project/ProjectService.js';
+import { TypeScriptLanguageAdapter } from '../project/TypeScriptLanguageAdapter.js';
 import { TaskRunner, type TaskStatusEvent as RuntimeTaskStatusEvent } from '../tasks/TaskRunner.js';
 import { TaskService } from '../tasks/TaskService.js';
 
@@ -96,6 +104,20 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
       await learning.learnFromOutcome(outcome);
     },
   });
+  const projectScanner = new ProjectScanner(projectService);
+  const projectIndexer = new ProjectIndexer(projectService);
+  const projectLanguage = new ProjectLanguageService(
+    projectService,
+    new LanguageAdapterRegistry([new TypeScriptLanguageAdapter()]),
+  );
+  const projectGraph = new ProjectGraph(new ProjectGraphRepository(memoryStorePath));
+  const projectIntelligence = new ProjectIntelligenceService(
+    projectService,
+    projectScanner,
+    projectIndexer,
+    projectLanguage,
+    projectGraph,
+  );
   const generatedChangeSets = new Map<string, ChangeSet>();
   const agentExecutor = new AgentExecutor(projectService, fileService);
   const agentPlanner = new AgentPlanner();
@@ -108,6 +130,7 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
       maxTurns: 4,
       systemPrompt: REPAIR_AGENT_SYSTEM_PROMPT,
       memory: memoryRetriever,
+      projectContext: projectIntelligence,
     }))
     : undefined);
   const repairCoordinator = repairAgent
@@ -131,6 +154,7 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
           maxTurns: 8,
           systemPrompt: REAL_AGENT_SYSTEM_PROMPT,
           memory: memoryRetriever,
+          projectContext: projectIntelligence,
         });
         const agent = await runtime.run({
           taskId: subtask.id,
@@ -185,6 +209,7 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
         maxTurns: 8,
         systemPrompt: REAL_AGENT_SYSTEM_PROMPT,
         memory: memoryRetriever,
+        projectContext: projectIntelligence,
       });
       const agent = await runtime.run({
         taskId: request.id,
@@ -237,7 +262,13 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
     },
     async handleProject(command) {
       if (!started) throw new Error('Runtime is not started');
-      return projectController.handle(command);
+      const result = await projectController.handle(command);
+      if (command.type === 'project.open' && result && !Array.isArray(result) && 'id' in result) {
+        await projectIntelligence.index(result.id);
+      } else if (command.type === 'project.close') {
+        await projectIntelligence.clear(command.projectId);
+      }
+      return result;
     },
     async submitTask(request) {
       if (!started) throw new Error('Runtime is not started');
