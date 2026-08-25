@@ -11,8 +11,15 @@ export interface TaskOutcome {
   summary?: string;
 }
 
+export interface TaskOutcomeLearner {
+  learn(outcome: TaskOutcome): Promise<void>;
+}
+
 export class TaskMemoryRecorder {
-  constructor(private readonly repository: Pick<MemoryRepository, 'saveTaskMemory'>) {}
+  constructor(
+    private readonly repository: Pick<MemoryRepository, 'saveTaskMemory'>,
+    private readonly learner?: TaskOutcomeLearner,
+  ) {}
 
   async record(outcome: TaskOutcome): Promise<void> {
     const entry = {
@@ -27,6 +34,14 @@ export class TaskMemoryRecorder {
       await this.repository.saveTaskMemory(outcome.taskId, entry);
     } catch {
       // Memory is an auxiliary capability and must never fail the task path.
+    }
+
+    if (this.learner) {
+      try {
+        await this.learner.learn(outcome);
+      } catch {
+        // Learning is an auxiliary capability and must never fail the task path.
+      }
     }
   }
 
