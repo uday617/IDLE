@@ -1,4 +1,5 @@
-import { dirname, extname, join, normalize, posix } from 'node:path';
+import { dirname, extname, join, posix } from 'node:path';
+import type { ProjectGraphRepository } from './ProjectGraphRepository.js';
 
 export interface GraphFile {
   path: string;
@@ -16,22 +17,20 @@ const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs',
 export class ProjectGraph {
   private readonly projects = new Map<string, ProjectGraphState>();
 
+  constructor(private readonly repository?: ProjectGraphRepository) {}
+
   async update(projectId: string, files: GraphFile[]): Promise<void> {
-    const fileMap = new Map(files.map((file) => [normalizePath(file.path), file]));
-    const imports = new Map<string, Set<string>>();
-
-    for (const file of fileMap.values()) {
-      const targets = new Set<string>();
-      for (const specifier of file.imports) {
-        const target = resolveRelativeImport(file.path, specifier, fileMap);
-        if (target) {
-          targets.add(target);
-        }
-      }
-      imports.set(file.path, targets);
+    const state = this.buildState(files);
+    this.projects.set(projectId, state);
+    if (this.repository) {
+      await this.repository.save(projectId, files);
     }
+  }
 
-    this.projects.set(projectId, { files: fileMap, imports });
+  async load(projectId: string): Promise<void> {
+    if (!this.repository) return;
+    const files = await this.repository.load(projectId);
+    this.projects.set(projectId, this.buildState(files));
   }
 
   relatedFiles(projectId: string, path: string, maxDepth = 1): string[] {
@@ -69,9 +68,38 @@ export class ProjectGraph {
     return file ? [...file.symbols].sort() : [];
   }
 
-  clear(projectId: string): void {
+  async clear(projectId: string): Promise<void> {
     this.projects.delete(projectId);
+    if (this.repository) {
+      await this.repository.delete(projectId);
+    }
   }
+
+  private buildState(files: GraphFile[]): ProjectGraphState {
+    const fileMap = new Map(files.map((file) => [normalizePath(file.path), cloneGraphFile(file)]));
+    const imports = new Map<string, Set<string>>();
+
+    for (const file of fileMap.values()) {
+      const targets = new Set<string>();
+      for (const specifier of file.imports) {
+        const target = resolveRelativeImport(file.path, specifier, fileMap);
+        if (target) {
+          targets.add(target);
+        }
+      }
+      imports.set(file.path, targets);
+    }
+
+    return { files: fileMap, imports };
+  }
+}
+
+function cloneGraphFile(file: GraphFile): GraphFile {
+  return {
+    path: file.path,
+    imports: [...file.imports],
+    symbols: [...file.symbols],
+  };
 }
 
 function normalizePath(path: string): string {
