@@ -20,7 +20,9 @@ import type { RepairDecision } from '../agents/RepairLoop.js';
 import type { AgentProposalFile } from '../agents/AgentProposalEngine.js';
 import { MemoryRepository } from '../memory/MemoryRepository.js';
 import { ProjectMemoryRetriever } from '../memory/ProjectMemoryRetriever.js';
+import { ProjectMemory } from '../memory/ProjectMemory.js';
 import { TaskMemoryRecorder } from '../memory/TaskMemoryRecorder.js';
+import { TaskLearningService } from '../learning/TaskLearningService.js';
 import { ProjectController, type ProjectCommand, type ProjectCommandResult } from '../project/ProjectController.js';
 import { ChangeSetService } from '../project/ChangeSetService.js';
 import { FileService } from '../project/FileService.js';
@@ -88,7 +90,12 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
   const memoryStorePath = options.memoryStorePath ?? process.env.IDLE_MEMORY_STORE_PATH ?? join(homedir(), '.idle', 'memory');
   const memoryRepository = new MemoryRepository(memoryStorePath);
   const memoryRetriever = new ProjectMemoryRetriever(memoryRepository);
-  const memoryRecorder = new TaskMemoryRecorder(memoryRepository);
+  const memoryRecorder = new TaskMemoryRecorder(memoryRepository, {
+    async learn(outcome) {
+      const learning = new TaskLearningService(new ProjectMemory(outcome.projectId, memoryRepository));
+      await learning.learnFromOutcome(outcome);
+    },
+  });
   const generatedChangeSets = new Map<string, ChangeSet>();
   const agentExecutor = new AgentExecutor(projectService, fileService);
   const agentPlanner = new AgentPlanner();
@@ -259,7 +266,6 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
           const changeSet = generatedChangeSets.get(checkpoint.id);
           if (changeSet && task.projectId) {
             result.changeSet = changeSet;
-            result.changeSetReview = await changeSetService.review(task.projectId, changeSet);
           }
         }
       }
@@ -268,85 +274,33 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
     async repairTask(taskId, failure, files = []) {
       if (!started) throw new Error('Runtime is not started');
       if (!repairCoordinator) throw new Error('Repair agent is not configured');
-      if (!taskService.get(taskId)) throw new Error(`Unknown task: ${taskId}`);
-
-      repairCoordinator.start(taskId);
-      const decision = await repairCoordinator.onVerificationFailureAndPropose(taskId, failure, files);
-      if (decision.kind === 'await_review') {
-        generatedChangeSets.set(decision.changeSet.id, decision.changeSet);
-        await taskService.checkpoint(taskId, { name: 'repair.changeset', data: decision.changeSet });
-      }
-      return decision;
+      const task = taskRunner.get(taskId);
+      if (!task?.projectId) throw new Error('Task project is unavailable');
+      const result = await repairCoordinator.repair({
+        taskId,
+        projectId: task.projectId,
+        prompt: task.prompt,
+        failure,
+        files,
+      });
+      if (result.changeSet) generatedChangeSets.set(result.changeSet.id, result.changeSet);
+      return result;
     },
     async applyRepair(taskId, changeSetId) {
       if (!started) throw new Error('Runtime is not started');
-      if (!options.repairVerifier && !commandRepairVerifier) throw new Error('Repair verifier is not configured');
-      if (!repairCoordinator) throw new Error('Repair agent is not configured');
-
-      const task = taskService.get(taskId);
-      if (!task) throw new Error(`Unknown task: ${taskId}`);
-      if (task.repairStatus !== 'review') throw new Error(`Task is not awaiting repair review: ${taskId}`);
-
+      const task = taskRunner.get(taskId);
+      if (!task?.projectId) throw new Error('Task project is unavailable');
       const changeSet = generatedChangeSets.get(changeSetId);
-      if (!changeSet) throw new Error(`Unknown repair ChangeSet: ${changeSetId}`);
-      const checkpoint = task.checkpoint?.data as { id?: unknown } | undefined;
-      if (task.checkpoint?.name !== 'repair.changeset' || checkpoint?.id !== changeSetId) {
-        throw new Error(`Repair ChangeSet is not pending review for task: ${taskId}`);
-      }
-      if (!task.projectId) throw new Error(`Task is missing project context: ${taskId}`);
-
-      const applied = await changeSetService.apply(task.projectId, changeSet);
-      await taskService.checkpoint(taskId, { name: 'repair.applied', data: applied });
-
-      let verificationFailure: FailureContext | null;
-      if (options.repairVerifier) {
-        verificationFailure = await options.repairVerifier(taskId, task.projectId, changeSet);
-      } else {
-        const project = await projectService.get(task.projectId);
-        if (!project || !commandRepairVerifier || !options.repairVerification) {
-          throw new Error(`Project verification context is unavailable: ${taskId}`);
-        }
-        verificationFailure = await commandRepairVerifier.verify({
-          taskId,
-          projectId: task.projectId,
-          cwd: project.path,
-          command: options.repairVerification.command,
-          checkId: options.repairVerification.checkId ?? 'repair-verification',
-          attempt: Math.min(task.repairAttempts + 1, 3),
-          previousAttempts: task.latestFailure
-            ? [
-                ...task.latestFailure.previousAttempts,
-                {
-                  attempt: task.latestFailure.attempt,
-                  ...(task.latestFailure.changeSetId ? { changeSetId: task.latestFailure.changeSetId } : {}),
-                  status: 'failed',
-                  summary: task.latestFailure.stderrExcerpt || task.latestFailure.stdoutExcerpt,
-                },
-              ]
-            : [],
-          ...(options.repairVerification.affectedPaths
-            ? { affectedPaths: options.repairVerification.affectedPaths }
-            : {}),
-        });
-      }
-      await taskService.checkpoint(taskId, {
-        name: 'repair.verification',
-        data: verificationFailure ?? { ok: true },
-      });
-
-      if (verificationFailure) {
-        const nextDecision = await repairCoordinator.onVerificationFailureAndPropose(taskId, {
-          ...verificationFailure,
-          attempt: Math.max(task.repairAttempts + 1, verificationFailure.attempt),
-        });
-        if (nextDecision.kind === 'await_review') {
-          generatedChangeSets.set(nextDecision.changeSet.id, nextDecision.changeSet);
-          await taskService.checkpoint(taskId, { name: 'repair.changeset', data: nextDecision.changeSet });
-        }
-        return nextDecision;
-      }
-
-      return repairCoordinator.onVerificationSuccess(taskId);
+      if (!changeSet) throw new Error('ChangeSet is unavailable');
+      const verifier = commandRepairVerifier;
+      if (!verifier) throw new Error('Repair verification is not configured');
+      const failure = await verifier(taskId, task.projectId, changeSet);
+      if (failure) return repairCoordinator
+        ? repairCoordinator.recordFailure(taskId, failure)
+        : { status: 'failed' as const, attempts: 0, failure };
+      return repairCoordinator
+        ? repairCoordinator.recordSuccess(taskId)
+        : { status: 'succeeded' as const, attempts: 0 };
     },
     subscribeTask(listener) {
       taskListeners.add(listener);
