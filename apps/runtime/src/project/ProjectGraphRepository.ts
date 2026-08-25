@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import type { GraphFile } from './ProjectGraph.js';
 
@@ -59,13 +60,19 @@ export class ProjectGraphRepository {
   }
 
   private async persist(): Promise<void> {
-    const snapshot = JSON.stringify(this.store ?? EMPTY_STORE, null, 2);
-    const temporaryPath = `${this.filePath}.tmp`;
-    this.writeQueue = this.writeQueue.then(async () => {
+    const operation = this.writeQueue.catch(() => undefined).then(async () => {
+      const snapshot = JSON.stringify(this.store ?? EMPTY_STORE, null, 2);
+      const temporaryPath = `${this.filePath}.${randomUUID()}.tmp`;
       await mkdir(dirname(this.filePath), { recursive: true });
-      await writeFile(temporaryPath, snapshot, 'utf8');
-      await rename(temporaryPath, this.filePath);
+      try {
+        await writeFile(temporaryPath, snapshot, 'utf8');
+        await rename(temporaryPath, this.filePath);
+      } finally {
+        await unlink(temporaryPath).catch(() => undefined);
+      }
     });
-    return this.writeQueue;
+
+    this.writeQueue = operation.catch(() => undefined);
+    return operation;
   }
 }
