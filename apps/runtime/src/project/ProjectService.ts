@@ -13,10 +13,13 @@ interface ProjectStore {
 
 export class ProjectService {
   private readonly projects = new Map<string, Project>();
+  private loaded = false;
 
-  constructor(private readonly storePath?: string) {}
+  constructor(private readonly storePath = process.env.IDLE_PROJECT_STORE_PATH) {}
 
   async load(): Promise<void> {
+    if (this.loaded) return;
+    this.loaded = true;
     if (!this.storePath) return;
 
     try {
@@ -34,6 +37,7 @@ export class ProjectService {
   }
 
   async open(projectPath: string): Promise<Project> {
+    await this.load();
     const path = resolve(projectPath);
     const info = await stat(path);
 
@@ -51,11 +55,13 @@ export class ProjectService {
   }
 
   async close(projectId: string): Promise<void> {
+    await this.load();
     this.projects.delete(projectId);
     await this.persist();
   }
 
   async get(projectId: string): Promise<Project | null> {
+    await this.load();
     const project = this.projects.get(projectId);
     return project ? structuredClone(project) : null;
   }
