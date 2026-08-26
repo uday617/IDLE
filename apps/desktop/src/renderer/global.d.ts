@@ -1,15 +1,4 @@
-import type {
-  ChangeSet,
-  ChangeSetApplyResult,
-  ChangeSetReviewResult,
-  FileContent,
-  FileEntry,
-  Project,
-  TaskResult,
-  TaskStatusEvent,
-  TaskSubmitRequest,
-  TaskSubmitResult,
-} from '@idle/contracts';
+import type { ChangeSet, ChangeSetApplyResult, ChangeSetReviewResult, FileContent, FileEntry, Project, TaskResult, TaskStatusEvent, TaskSubmitRequest, TaskSubmitResult } from '@idle/contracts';
 
 declare global {
   interface Window {
@@ -21,6 +10,9 @@ declare global {
         readFile(projectId: string, path: string): Promise<FileContent | null>;
         writeFile(projectId: string, path: string, content: string): Promise<{ ok: true } | null>;
         close(projectId: string): Promise<{ ok: true } | null>;
+        gitStatus(projectId: string): Promise<{ branch: string; clean: boolean; changedFiles: string[]; stagedFiles: string[] } | null>;
+        gitDiff(projectId: string): Promise<string | null>;
+        terminalRun(projectId: string, command: string): Promise<{ exitCode: number; stdout: string; stderr: string } | null>;
         reviewChangeSet(projectId: string, changeSet: ChangeSet): Promise<ChangeSetReviewResult | null>;
         applyChangeSet(projectId: string, changeSet: ChangeSet): Promise<ChangeSetApplyResult | null>;
       };
