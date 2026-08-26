@@ -2,7 +2,7 @@ import type { ChangeSet } from '@idle/contracts';
 import type { Project, ProjectService } from './ProjectService.js';
 import type { FileContent, FileEntry, FileService } from './FileService.js';
 import type { ChangeSetApplyResult, ChangeSetPreviewResult, ChangeSetReviewResult, ChangeSetService } from './ChangeSetService.js';
-import { GitService, type GitStatus } from './GitService.js';
+import { GitService, type GitDiff, type GitStatus } from './GitService.js';
 import { TerminalService, type TerminalResult } from './TerminalService.js';
 
 export type ProjectCommand =
@@ -27,7 +27,7 @@ export type ProjectCommandResult =
   | ChangeSetPreviewResult
   | ChangeSetApplyResult
   | GitStatus
-  | string
+  | GitDiff
   | TerminalResult
   | null
   | { ok: true };
