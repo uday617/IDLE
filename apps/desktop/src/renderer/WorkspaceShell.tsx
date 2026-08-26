@@ -7,6 +7,7 @@ import { Editor } from './Editor.js';
 import { FileExplorer } from './FileExplorer.js';
 import { TaskWorkspace } from './TaskWorkspace.js';
 import { AdvancedTaskForm } from './AdvancedTaskForm.js';
+import { SettingsPanel } from './SettingsPanel.js';
 import { getWorkspacePanelTitle } from './workspaceModel.js';
 import { getAgentPanelState, getWorkspaceStatus } from './workspaceUiModel.js';
 import { beginProjectOpen, completeProjectOpen, failProjectOpen, initialProjectWorkspaceState } from './projectState.js';
@@ -39,9 +40,7 @@ export function WorkspaceShell() {
       const result = await window.idle.tasks.get(taskId);
       if (cancelled) return;
       if (result) {
-        setTaskResult(result);
-        setTaskStatus(result.status);
-        setTaskError(result.error ?? null);
+        setTaskResult(result); setTaskStatus(result.status); setTaskError(result.error ?? null);
         if (result.status === 'completed') { setReview(result.changeSetReview ?? null); setChangeSet(result.changeSet ?? null); }
         if (result.status === 'completed' || result.status === 'failed' || result.status === 'cancelled' || result.status === 'paused') return;
       }
@@ -54,8 +53,7 @@ export function WorkspaceShell() {
   const openProject = async () => { setState(beginProjectOpen()); setSelectedFile(null); try { const opened = await window.idle.project.openDialog(); setState((current) => completeProjectOpen(current, opened)); } catch (cause) { setState((current) => failProjectOpen(current, cause instanceof Error ? cause.message : 'Unable to open project')); } };
   const focusInput = (mode: InputMode) => { setInputMode(mode); taskInputRef.current?.focus(); };
   const submitTask = async () => {
-    const prompt = taskPrompt.trim();
-    if (!state.project || !prompt || inputMode !== 'task') return;
+    const prompt = taskPrompt.trim(); if (!state.project || !prompt || inputMode !== 'task') return;
     const nextTaskId = crypto.randomUUID() as TaskId;
     taskIdRef.current = nextTaskId; setTaskId(nextTaskId); setTaskStatus('queued'); setTaskError(null); setTaskResult(null); setReview(null); setChangeSet(null);
     try { await window.idle.tasks.submit({ taskId: nextTaskId, projectId: state.project.id as ProjectId, prompt, ...(orchestration ? { orchestration } : {}) }); setTaskPrompt(''); } catch (cause) { setTaskStatus('failed'); setTaskError(cause instanceof Error ? cause.message : 'Unable to submit task'); }
@@ -68,7 +66,7 @@ export function WorkspaceShell() {
   const workspaceStatus = getWorkspaceStatus({ projectPath: state.project?.path ?? null, dirty: Boolean(changeSet), agentCount: taskResult?.workspace?.agents.length ?? (taskStatus ? 1 : 0) });
 
   return <main className="workspace-shell">
-    <header className="titlebar"><div className="brand-block"><strong>IDLE</strong><span>Multi-agent coding workspace</span></div><div className="top-actions"><button className="action-button" type="button" onClick={() => void openProject()} disabled={state.opening}>{state.opening ? 'Opening…' : 'Open Project'}</button><button className="action-button primary-action" type="button" onClick={() => focusInput('task')} disabled={!state.project}>+ Quick Task</button><AdvancedTaskForm disabled={!state.project} onSubmit={(config) => { setOrchestration(config); focusInput('task'); }}/><button className="icon-button" type="button" onClick={() => focusInput('command')} aria-label="Command search">⌕</button></div></header>
+    <header className="titlebar"><div className="brand-block"><strong>IDLE</strong><span>Multi-agent coding workspace</span></div><div className="top-actions"><button className="action-button" type="button" onClick={() => void openProject()} disabled={state.opening}>{state.opening ? 'Opening…' : 'Open Project'}</button><button className="action-button primary-action" type="button" onClick={() => focusInput('task')} disabled={!state.project}>+ Quick Task</button><AdvancedTaskForm disabled={!state.project} onSubmit={(config) => { setOrchestration(config); focusInput('task'); }}/><SettingsPanel/><button className="icon-button" type="button" onClick={() => focusInput('command')} aria-label="Command search">⌕</button></div></header>
     <div className="taskbar"><label className="quick-task-input"><span>{inputMode === 'command' ? '⌕' : '✦'}</span><input ref={taskInputRef} value={taskPrompt} onChange={(event) => setTaskPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void submitTask(); }} placeholder={!state.project ? 'Open a project to start a task' : inputMode === 'command' ? 'Search commands, files, and actions…' : orchestration ? 'Advanced Task: describe the engineering work…' : 'Ask IDLE to change, explain, or verify something…'} disabled={!state.project}/><kbd>Enter</kbd></label><span className="taskbar-hint">{taskStatus && taskId ? `Task ${taskId.slice(0, 8)} · ${taskStatusLabel[taskStatus]}${taskError ? ` · ${taskError}` : ''}` : orchestration ? 'Advanced orchestration configured.' : 'AI changes will be reviewed before they are applied.'}</span></div>
     <section className="workspace-grid">
       <aside className="panel explorer-panel"><div className="panel-header"><div><h2>{getWorkspacePanelTitle('explorer')}</h2><span className="panel-subtitle">Project files</span></div></div><FileExplorer projectId={state.project?.id ?? null} selectedPath={selectedFile} onSelectFile={setSelectedFile}/>{state.error ? <p className="error-message" role="alert">{state.error}</p> : null}</aside>
