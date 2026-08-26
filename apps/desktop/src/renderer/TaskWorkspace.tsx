@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { TaskOrchestrationRequest, TaskResult, TaskWorkspaceState } from '@idle/contracts';
 import { buildTaskWorkspace } from './taskWorkspaceModel.js';
 
-type Props = { result: TaskResult | null; prompt: string; orchestration?: TaskOrchestrationRequest };
+type Props = { result: TaskResult | null; prompt: string; orchestration?: TaskOrchestrationRequest | undefined };
 const statusLabel: Record<TaskWorkspaceState['task']['status'], string> = { queued: 'Queued', planning: 'Planning', running: 'Running', verifying: 'Verifying', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', paused: 'Paused' };
 function Section({ title, children }: { title: string; children: ReactNode }) { return <section className="task-workspace-section"><div className="task-workspace-section-title">{title}</div>{children}</section>; }
 
