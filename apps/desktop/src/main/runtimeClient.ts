@@ -5,8 +5,10 @@ import type { TaskResult, TaskStatusEvent, TaskSubmitRequest, TaskSubmitResult }
 export interface Project { id: string; path: string; }
 export interface FileEntry { name: string; path: string; kind: 'file' | 'directory'; }
 export interface FileContent { path: string; content: string; }
+export interface GitStatus { branch: string; clean: boolean; changedFiles: string[]; stagedFiles: string[]; }
+export interface TerminalResult { exitCode: number; stdout: string; stderr: string; }
 
-type RuntimeResponse = Project | FileEntry[] | FileContent | TaskSubmitResult | TaskResult | null | { ok: true };
+type RuntimeResponse = Project | FileEntry[] | FileContent | TaskSubmitResult | TaskResult | GitStatus | TerminalResult | string | null | { ok: true };
 type TaskEventListener = (event: TaskStatusEvent) => void;
 type PendingRequest = { resolve: (value: RuntimeResponse) => void; reject: (error: Error) => void };
 
@@ -20,14 +22,7 @@ export class RuntimeClient {
 
   start(): void {
     if (this.process) return;
-    const child = spawn(process.execPath, [this.runtimePath], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        ELECTRON_RUN_AS_NODE: '1',
-        ...(this.taskStorePath ? { IDLE_TASK_STORE_PATH: this.taskStorePath } : {}),
-      },
-    });
+    const child = spawn(process.execPath, [this.runtimePath], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', ...(this.taskStorePath ? { IDLE_TASK_STORE_PATH: this.taskStorePath } : {}) } });
     this.process = child;
     const lines = createInterface({ input: child.stdout });
     lines.on('line', (line) => {
@@ -43,26 +38,15 @@ export class RuntimeClient {
     });
     child.on('error', (error) => console.error('[idle-runtime] process error', error));
     child.stderr.on('data', (chunk) => console.error(`[idle-runtime] ${chunk}`));
-    child.on('exit', (code, signal) => {
-      console.error(`[idle-runtime] exited code=${code ?? 'null'} signal=${signal ?? 'null'}`);
-      this.process = null;
-      for (const request of this.pending.values()) request.reject(new Error('Agent runtime stopped'));
-      this.pending.clear();
-    });
+    child.on('exit', (code, signal) => { console.error(`[idle-runtime] exited code=${code ?? 'null'} signal=${signal ?? 'null'}`); this.process = null; for (const request of this.pending.values()) request.reject(new Error('Agent runtime stopped')); this.pending.clear(); });
   }
 
   stop(): void { this.process?.kill(); this.process = null; }
-
-  request(command: Record<string, unknown>): Promise<RuntimeResponse> {
-    if (!this.process) throw new Error('Agent runtime is not started');
-    const id = this.nextId++;
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      this.process?.stdin.write(`${JSON.stringify({ id, ...command })}\n`);
-    });
-  }
-
+  request(command: Record<string, unknown>): Promise<RuntimeResponse> { if (!this.process) throw new Error('Agent runtime is not started'); const id = this.nextId++; return new Promise((resolve, reject) => { this.pending.set(id, { resolve, reject }); this.process?.stdin.write(`${JSON.stringify({ id, ...command })}\n`); }); }
   submitTask(request: TaskSubmitRequest): Promise<TaskSubmitResult> { return this.request({ type: 'task.submit', ...request }) as Promise<TaskSubmitResult>; }
   getTask(taskId: string): Promise<TaskResult | null> { return this.request({ type: 'task.get', taskId }) as Promise<TaskResult | null>; }
+  gitStatus(projectId: string): Promise<GitStatus> { return this.request({ type: 'git.status', projectId }) as Promise<GitStatus>; }
+  gitDiff(projectId: string): Promise<string> { return this.request({ type: 'git.diff', projectId }) as Promise<string>; }
+  terminalRun(projectId: string, command: string): Promise<TerminalResult> { return this.request({ type: 'terminal.run', projectId, command }) as Promise<TerminalResult>; }
   subscribeTask(listener: TaskEventListener): () => void { this.taskListeners.add(listener); return () => this.taskListeners.delete(listener); }
 }
