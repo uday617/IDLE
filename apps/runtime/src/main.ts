@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { RUNTIME_VERSION } from './index.js';
 import { createRuntimeServer } from './ipc/server.js';
 import type { AgentProposalFile } from './agents/AgentProposalEngine.js';
-import type { FailureContext, ProjectId, TaskId, TaskOrchestrationRequest, TaskStatusEvent, TaskSubmitRequest } from '@idle/contracts';
+import type { ChangeSet, FailureContext, ProjectId, TaskId, TaskOrchestrationRequest, TaskStatusEvent, TaskSubmitRequest } from '@idle/contracts';
 import type { ProjectCommand } from './project/ProjectController.js';
 
 process.env.IDLE_PROJECT_STORE_PATH ??= join(homedir(), '.idle', 'projects.json');
@@ -21,7 +21,7 @@ interface RuntimeRequest {
   prompt?: string;
   content?: string;
   command?: string;
-  changeSet?: Parameters<Extract<ProjectCommand, { type: 'changeset.review' }>['changeSet']>;
+  changeSet?: ChangeSet;
   orchestration?: TaskOrchestrationRequest;
   failure?: FailureContext;
   files?: readonly AgentProposalFile[];
@@ -61,11 +61,11 @@ lines.on('line', async (line) => {
                 : request.type === 'file.write'
                   ? { type: 'file.write', projectId: request.projectId ?? '', path: request.path ?? '', content: request.content ?? '' }
                   : request.type === 'changeset.review'
-                    ? { type: 'changeset.review', projectId: request.projectId ?? '', changeSet: request.changeSet as never }
+                    ? { type: 'changeset.review', projectId: request.projectId ?? '', changeSet: request.changeSet as ChangeSet }
                     : request.type === 'changeset.preview'
-                      ? { type: 'changeset.preview', projectId: request.projectId ?? '', changeSet: request.changeSet as never }
+                      ? { type: 'changeset.preview', projectId: request.projectId ?? '', changeSet: request.changeSet as ChangeSet }
                       : request.type === 'changeset.apply'
-                        ? { type: 'changeset.apply', projectId: request.projectId ?? '', changeSet: request.changeSet as never }
+                        ? { type: 'changeset.apply', projectId: request.projectId ?? '', changeSet: request.changeSet as ChangeSet }
                         : request.type === 'git.status'
                           ? { type: 'git.status', projectId: request.projectId ?? '' }
                           : request.type === 'git.diff'
