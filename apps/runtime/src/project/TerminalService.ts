@@ -15,16 +15,18 @@ export class TerminalService {
     const trimmed = command.trim();
     if (!trimmed) throw new Error('Command cannot be empty');
     if (BLOCKED.test(trimmed)) throw new Error('Command contains blocked or shell-control syntax');
-    const [executable, ...args] = trimmed.split(/\s+/);
+    const parts = trimmed.split(/\s+/);
+    const executable = parts.shift();
+    if (!executable) throw new Error('Command executable is missing');
     if (!ALLOWED_EXECUTABLES.has(executable.toLowerCase())) throw new Error(`Command is not allowed: ${executable}`);
     return new Promise((resolve, reject) => {
-      const child = spawn(executable, args, { cwd: project.path, shell: false, windowsHide: true });
+      const child = spawn(executable, parts, { cwd: project.path, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
       let stdout = '';
       let stderr = '';
-      child.stdout.on('data', (chunk: Buffer | string) => { stdout += chunk.toString(); });
-      child.stderr.on('data', (chunk: Buffer | string) => { stderr += chunk.toString(); });
+      child.stdout?.on('data', (chunk: Buffer | string) => { stdout += chunk.toString(); });
+      child.stderr?.on('data', (chunk: Buffer | string) => { stderr += chunk.toString(); });
       child.once('error', reject);
-      child.once('close', (exitCode) => resolve({ exitCode: exitCode ?? 1, stdout, stderr }));
+      child.once('close', (exitCode: number | null) => resolve({ exitCode: exitCode ?? 1, stdout, stderr }));
     });
   }
 }
