@@ -1,25 +1,14 @@
 import type { ReactNode } from 'react';
-import type { TaskResult, TaskWorkspaceState } from '@idle/contracts';
+import type { TaskOrchestrationRequest, TaskResult, TaskWorkspaceState } from '@idle/contracts';
+import { buildTaskWorkspace } from './taskWorkspaceModel.js';
 
-type Props = {
-  result: TaskResult | null;
-  prompt: string;
-};
+type Props = { result: TaskResult | null; prompt: string; orchestration?: TaskOrchestrationRequest };
+const statusLabel: Record<TaskWorkspaceState['task']['status'], string> = { queued: 'Queued', planning: 'Planning', running: 'Running', verifying: 'Verifying', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', paused: 'Paused' };
+function Section({ title, children }: { title: string; children: ReactNode }) { return <section className="task-workspace-section"><div className="task-workspace-section-title">{title}</div>{children}</section>; }
 
-const statusLabel: Record<TaskWorkspaceState['task']['status'], string> = {
-  queued: 'Queued', planning: 'Planning', running: 'Running', verifying: 'Verifying', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', paused: 'Paused',
-};
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return <section className="task-workspace-section"><div className="task-workspace-section-title">{title}</div>{children}</section>;
-}
-
-export function TaskWorkspace({ result, prompt }: Props) {
-  const workspace = result?.workspace;
-  if (!workspace) {
-    return <div className="task-workspace-empty"><strong>{result ? statusLabel[result.status] : 'Ready'}</strong><p>{result?.error ?? 'Task workspace details will appear as the runtime emits structured task evidence.'}</p></div>;
-  }
-
+export function TaskWorkspace({ result, prompt, orchestration }: Props) {
+  if (!result) return null;
+  const workspace = buildTaskWorkspace(result, prompt, orchestration);
   return <div className="task-workspace" data-testid="task-workspace">
     <div className="task-workspace-summary"><div><span className="eyebrow">TASK</span><h3>{workspace.task.title || prompt}</h3><p>{workspace.task.description || prompt}</p></div><span className={`task-state task-state-${workspace.task.status}`}>{statusLabel[workspace.task.status]}</span></div>
     <Section title="Plan"><ol className="task-plan-list">{workspace.plan.map((step) => <li key={step.id} className={`task-plan-step task-plan-${step.status}`}><span>{step.status === 'completed' ? '✓' : step.status === 'failed' ? '!' : step.status === 'running' ? '●' : '○'}</span><div><strong>{step.title}</strong>{step.description ? <small>{step.description}</small> : null}</div></li>)}</ol></Section>
