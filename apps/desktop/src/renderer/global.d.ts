@@ -1,9 +1,14 @@
 import type { ChangeSet, ChangeSetApplyResult, ChangeSetReviewResult, FileContent, FileEntry, Project, TaskResult, TaskStatusEvent, TaskSubmitRequest, TaskSubmitResult } from '@idle/contracts';
+import type { ProviderSettings } from '../main/SettingsStore.js';
 
 declare global {
   interface Window {
     idle: {
       version: string;
+      settings: {
+        get(): Promise<ProviderSettings>;
+        set(settings: ProviderSettings): Promise<ProviderSettings>;
+      };
       project: {
         openDialog(): Promise<Project | null>;
         listFiles(projectId: string, path?: string): Promise<FileEntry[] | null>;
