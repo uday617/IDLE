@@ -7,8 +7,9 @@ export interface Project { id: string; path: string; }
 export interface FileEntry { name: string; path: string; kind: 'file' | 'directory'; }
 export interface FileContent { path: string; content: string; }
 export interface GitStatus { branch: string; clean: boolean; changedFiles: string[]; stagedFiles: string[]; }
+export interface GitDiff { diff: string; }
 export interface TerminalResult { exitCode: number; stdout: string; stderr: string; }
-type RuntimeResponse = Project | FileEntry[] | FileContent | TaskSubmitResult | TaskResult | GitStatus | TerminalResult | string | null | { ok: true };
+type RuntimeResponse = Project | FileEntry[] | FileContent | TaskSubmitResult | TaskResult | GitStatus | GitDiff | TerminalResult | string | null | { ok: true };
 type TaskEventListener = (event: TaskStatusEvent) => void;
 type PendingRequest = { resolve: (value: RuntimeResponse) => void; reject: (error: Error) => void };
 
@@ -38,7 +39,7 @@ export class RuntimeClient {
   submitTask(request: TaskSubmitRequest): Promise<TaskSubmitResult> { return this.request({ type: 'task.submit', ...request }) as Promise<TaskSubmitResult>; }
   getTask(taskId: string): Promise<TaskResult | null> { return this.request({ type: 'task.get', taskId }) as Promise<TaskResult | null>; }
   gitStatus(projectId: string): Promise<GitStatus> { return this.request({ type: 'git.status', projectId }) as Promise<GitStatus>; }
-  gitDiff(projectId: string): Promise<string> { return this.request({ type: 'git.diff', projectId }) as Promise<string>; }
+  async gitDiff(projectId: string): Promise<string> { const result = await this.request({ type: 'git.diff', projectId }) as GitDiff; return result.diff; }
   terminalRun(projectId: string, command: string): Promise<TerminalResult> { return this.request({ type: 'terminal.run', projectId, command }) as Promise<TerminalResult>; }
   subscribeTask(listener: TaskEventListener): () => void { this.taskListeners.add(listener); return () => this.taskListeners.delete(listener); }
 }
