@@ -1,15 +1,16 @@
-import type { TaskOrchestrationRequest, TaskResult, TaskWorkspaceState } from '@idle/contracts';
+import type { AgentStatus, TaskOrchestrationRequest, TaskResult, TaskWorkspaceState } from '@idle/contracts';
 
 export function buildTaskWorkspace(result: TaskResult, prompt: string, orchestration?: TaskOrchestrationRequest): TaskWorkspaceState {
   if (result.workspace) return result.workspace;
-  const files = result.changeSet?.files.map((file) => file.path) ?? [];
+  const files = result.changeSet?.changes.map((change) => change.path) ?? [];
   const agentCount = orchestration?.enabled ? Math.max(1, Math.min(orchestration.maxAgents ?? 2, 4)) : 1;
+  const agentStatus: AgentStatus = result.status === 'completed' ? 'completed' : result.status === 'failed' ? 'failed' : 'executing';
   const now = new Date().toISOString();
   const agents = Array.from({ length: agentCount }, (_, index) => ({
     agentId: `agent-${index + 1}` as TaskWorkspaceState['agents'][number]['agentId'],
     role: index === 0 ? 'Primary agent' : `Agent ${index + 1}`,
-    status: result.status === 'completed' ? 'completed' : result.status === 'failed' ? 'failed' : 'running',
-    progress: result.status === 'completed' ? 100 : result.status === 'failed' ? 100 : 50,
+    status: agentStatus,
+    progress: result.status === 'completed' || result.status === 'failed' ? 100 : 50,
     currentAction: result.status === 'completed' ? 'Completed task and produced reviewable changes' : result.status === 'failed' ? 'Task failed; inspect recovery information' : 'Executing task',
     claimedPaths: files,
   }));
