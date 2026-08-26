@@ -5,6 +5,7 @@ import type { ProjectService } from './ProjectService.js';
 const execFileAsync = promisify(execFile);
 
 export interface GitStatus { branch: string; clean: boolean; changedFiles: string[]; stagedFiles: string[]; }
+export interface GitDiff { diff: string; }
 
 export class GitService {
   constructor(private readonly projects: ProjectService) {}
@@ -26,10 +27,10 @@ export class GitService {
     return { branch: branchOut.trim() || 'HEAD', clean: changedFiles.length === 0 && stagedFiles.length === 0, changedFiles, stagedFiles };
   }
 
-  async diff(projectId: string): Promise<string> {
+  async diff(projectId: string): Promise<GitDiff> {
     const project = await this.projects.get(projectId);
     if (!project) throw new Error(`Project not found: ${projectId}`);
     const { stdout } = await execFileAsync('git', ['diff', '--no-ext-diff', '--'], { cwd: project.path, windowsHide: true, maxBuffer: 2 * 1024 * 1024 });
-    return stdout;
+    return { diff: stdout };
   }
 }
