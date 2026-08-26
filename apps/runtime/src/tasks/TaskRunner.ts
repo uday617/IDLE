@@ -90,6 +90,7 @@ export class TaskRunner {
       const current = this.tasks.get(task.id);
       if (!current) continue;
       if (resumedSet.has(task.id)) {
+        this.emit(current);
         if (current.projectId) {
           await this.recordMemory({
             id: current.id,
