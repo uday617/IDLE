@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { TaskResult, TaskWorkspaceState } from '@idle/contracts';
 
 type Props = {
@@ -9,7 +10,7 @@ const statusLabel: Record<TaskWorkspaceState['task']['status'], string> = {
   queued: 'Queued', planning: 'Planning', running: 'Running', verifying: 'Verifying', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled', paused: 'Paused',
 };
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return <section className="task-workspace-section"><div className="task-workspace-section-title">{title}</div>{children}</section>;
 }
 
