@@ -9,7 +9,9 @@ describe('GenericLanguageAdapter', () => {
     expect(result.symbols).toEqual(['LoginService', 'handler']);
   });
 
-  it('is a safe fallback for every path', () => {
-    expect(new GenericLanguageAdapter().supports('src/example.unknown')).toBe(true);
+  it('only claims code-like fallback extensions', () => {
+    const adapter = new GenericLanguageAdapter();
+    expect(adapter.supports('src/example.py')).toBe(true);
+    expect(adapter.supports('README.md')).toBe(false);
   });
 });
