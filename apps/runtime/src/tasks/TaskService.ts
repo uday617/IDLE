@@ -67,7 +67,21 @@ export class TaskService {
 
   async start(id: string): Promise<TaskRecord> { return this.update(id, { status: 'running' }); }
 
-  async checkpoint(id: string, checkpoint: TaskCheckpoint): Promise<TaskRecord> { return this.update(id, { checkpoint }); }
+  async checkpoint(id: string, checkpoint: TaskCheckpoint): Promise<TaskRecord> {
+    const current = this.tasks.get(id);
+    if (!current) throw new Error(`Unknown task: ${id}`);
+
+    // Keep the reviewable ChangeSet as the primary task checkpoint. Verification
+    // is metadata about that artifact and must not hide it from task.get().
+    if (checkpoint.name === 'agent.verification' && current.checkpoint?.name === 'agent.changeset') {
+      const data = current.checkpoint.data && typeof current.checkpoint.data === 'object'
+        ? { ...(current.checkpoint.data as Record<string, unknown>), verification: checkpoint.data }
+        : { verification: checkpoint.data };
+      return this.update(id, { checkpoint: { name: 'agent.changeset', data } });
+    }
+
+    return this.update(id, { checkpoint });
+  }
 
   async recordRepairFailure(id: string, failure: FailureContext): Promise<TaskRecord> {
     const current = this.tasks.get(id);
