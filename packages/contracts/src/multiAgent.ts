@@ -5,12 +5,21 @@ export interface AgentSubtask {
   parentTaskId: TaskId;
   prompt: string;
   claimedPaths?: string[];
+  role?: string;
+}
+
+export interface MultiAgentBudget {
+  maxDelegationDepth: number;
+  maxTaskTokens?: number;
+  maxApiCalls?: number;
+  idleTimeoutMs?: number;
 }
 
 export interface MultiAgentConfig {
   defaultMaxAgents: number;
   hardMaxAgents: number;
   maxAgents?: number;
+  budget?: MultiAgentBudget;
 }
 
 export type AgentRunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'conflict';
@@ -22,6 +31,9 @@ export interface AgentRunRecord {
   claimedPaths: string[];
   changeSetId?: string;
   error?: string;
+  role?: string;
+  startedAt?: string;
+  finishedAt?: string;
 }
 
 export interface CoordinationEvent<T = unknown> {

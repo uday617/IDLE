@@ -156,11 +156,7 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
           memory: memoryRetriever,
           projectContext: projectIntelligence,
         });
-        const agent = await runtime.run({
-          taskId: subtask.id,
-          projectId: task.projectId,
-          prompt: subtask.prompt,
-        });
+        const agent = await runtime.run({ taskId: subtask.id, projectId: task.projectId, prompt: subtask.prompt });
         if (agent.error) throw new Error(agent.error);
         changeSet = changeSetBuilder.createChangeSet(plan, proposals.changes);
       } else {
@@ -173,6 +169,8 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
         changeSet = changeSetBuilder.createChangeSet(plan, proposal.changes);
       }
 
+      const review = await changeSetService.review(task.projectId, changeSet);
+      if (!review.valid) throw new Error(`Generated ChangeSet failed validation: ${review.errors.join('; ')}`);
       return {
         changeSet,
         ...(subtask.claimedPaths ? { claimedPaths: subtask.claimedPaths } : { claimedPaths: extractReferencedFilePaths(subtask.prompt) }),
@@ -183,12 +181,24 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
       defaultMaxAgents: 2,
       hardMaxAgents: 4,
       ...(request.orchestration?.maxAgents !== undefined ? { maxAgents: request.orchestration.maxAgents } : {}),
+      ...(request.orchestration?.maxDelegationDepth !== undefined || request.orchestration?.maxTaskTokens !== undefined || request.orchestration?.maxApiCalls !== undefined || request.orchestration?.idleTimeoutMs !== undefined
+        ? {
+            budget: {
+              maxDelegationDepth: request.orchestration.maxDelegationDepth ?? 2,
+              ...(request.orchestration.maxTaskTokens !== undefined ? { maxTaskTokens: request.orchestration.maxTaskTokens } : {}),
+              ...(request.orchestration.maxApiCalls !== undefined ? { maxApiCalls: request.orchestration.maxApiCalls } : {}),
+              ...(request.orchestration.idleTimeoutMs !== undefined ? { idleTimeoutMs: request.orchestration.idleTimeoutMs } : {}),
+            },
+          }
+        : {}),
     });
     if (coordination.status !== 'completed' || !coordination.combinedChangeSet) {
       const conflictMessage = coordination.conflicts.map((conflict) => `${conflict.paths.join(', ')} (${conflict.subtaskIds.join(', ')})`).join('; ');
       const failureMessage = coordination.failures.map((failure) => `${failure.subtaskId}: ${failure.error}`).join('; ');
       throw new Error(conflictMessage ? `Multi-agent conflict: ${conflictMessage}` : failureMessage || `Multi-agent task ${coordination.status}`);
     }
+    const review = await changeSetService.review(request.projectId, coordination.combinedChangeSet);
+    if (!review.valid) throw new Error(`Combined ChangeSet failed validation: ${review.errors.join('; ')}`);
     generatedChangeSets.set(coordination.combinedChangeSet.id, coordination.combinedChangeSet);
     return coordination.combinedChangeSet;
   };
@@ -204,18 +214,13 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
       const proposals = createAgentWorkspaceProposalBuffer();
       const registry = new ToolRegistry();
       for (const tool of createAgentWorkspaceTools(fileService, proposals)) registry.register(tool);
-
       const runtime = new AgentRuntime(llmProvider, registry, {
         maxTurns: 8,
         systemPrompt: REAL_AGENT_SYSTEM_PROMPT,
         memory: memoryRetriever,
         projectContext: projectIntelligence,
       });
-      const agent = await runtime.run({
-        taskId: request.id,
-        projectId: request.projectId,
-        prompt: request.prompt ?? '',
-      });
+      const agent = await runtime.run({ taskId: request.id, projectId: request.projectId, prompt: request.prompt ?? '' });
       await taskService.checkpoint(request.id, { name: 'agent.runtime', data: agent });
       if (agent.error) throw new Error(agent.error);
       changeSet = changeSetBuilder.createChangeSet(plan, proposals.changes);
@@ -229,76 +234,49 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
       changeSet = changeSetBuilder.createChangeSet(plan, proposal.changes);
     }
 
-    generatedChangeSets.set(changeSet.id, changeSet);
+    const review = await changeSetService.review(request.projectId, changeSet);
+    if (!review.valid) throw new Error(`Generated ChangeSet failed validation: ${review.errors.join('; ')}`);
     await taskService.checkpoint(request.id, { name: 'agent.changeset', data: changeSet });
+    await taskService.checkpoint(request.id, { name: 'agent.verification', data: { valid: true, errors: [], changeCount: changeSet.changes.length } });
+    generatedChangeSets.set(changeSet.id, changeSet);
   }, undefined, executeMultiAgent, memoryRecorder);
 
   taskRunner.subscribe((event) => {
     const status = toContractStatus(event.status);
     const contractEvent: TaskStatusEvent = {
-      taskId: event.taskId as TaskStatusEvent['taskId'],
-      status,
-      timestamp: event.timestamp,
+      taskId: event.taskId as TaskStatusEvent['taskId'], status, timestamp: event.timestamp,
       ...(event.error ? { message: event.error } : {}),
     };
     for (const listener of taskListeners) listener(contractEvent);
   });
 
   return {
-    async start() {
-      if (started) return;
-      await taskService.load();
-      started = true;
-      await taskRunner.resumePendingTasks();
-    },
-    async stop() {
-      started = false;
-      taskListeners.clear();
-      generatedChangeSets.clear();
-    },
-    health() {
-      if (!started) throw new Error('Runtime is not started');
-      return { status: 'ok', version };
-    },
+    async start() { if (started) return; await taskService.load(); started = true; await taskRunner.resumePendingTasks(); },
+    async stop() { started = false; taskListeners.clear(); generatedChangeSets.clear(); },
+    health() { if (!started) throw new Error('Runtime is not started'); return { status: 'ok', version }; },
     async handleProject(command) {
       if (!started) throw new Error('Runtime is not started');
       const result = await projectController.handle(command);
-      if (command.type === 'project.open' && result && !Array.isArray(result) && 'id' in result) {
-        await projectIntelligence.index(result.id);
-      } else if (command.type === 'project.close') {
-        await projectIntelligence.clear(command.projectId);
-      }
+      if (command.type === 'project.open' && result && !Array.isArray(result) && 'id' in result) await projectIntelligence.index(result.id);
+      else if (command.type === 'project.close') await projectIntelligence.clear(command.projectId);
       return result;
     },
     async submitTask(request) {
       if (!started) throw new Error('Runtime is not started');
-      void taskRunner.submit({
-        id: request.taskId,
-        projectId: request.projectId,
-        prompt: request.prompt,
-        orchestration: request.orchestration,
-        checkpoint: { name: 'submitted', data: { projectId: request.projectId, prompt: request.prompt, orchestration: request.orchestration } },
-      });
+      void taskRunner.submit({ id: request.taskId, projectId: request.projectId, prompt: request.prompt, orchestration: request.orchestration, checkpoint: { name: 'submitted', data: { projectId: request.projectId, prompt: request.prompt, orchestration: request.orchestration } } });
       return { taskId: request.taskId, status: 'queued' };
     },
     async getTask(taskId) {
       if (!started) throw new Error('Runtime is not started');
       const task = taskRunner.get(taskId);
       if (!task || (task.status !== 'completed' && task.status !== 'failed')) return null;
-      const result: TaskResult = {
-        taskId: task.id as TaskResult['taskId'],
-        status: task.status,
-        ...(task.error ? { error: task.error } : {}),
-      };
+      const result: TaskResult = { taskId: task.id as TaskResult['taskId'], status: task.status, ...(task.error ? { error: task.error } : {}) };
       if (task.checkpoint?.name === 'agent.changeset' || task.checkpoint?.name === 'repair.changeset') {
         const checkpoint = task.checkpoint.data as { id?: unknown } | undefined;
         if (typeof checkpoint?.id === 'string') {
           result.changeSetId = checkpoint.id;
           const changeSet = generatedChangeSets.get(checkpoint.id);
-          if (changeSet && task.projectId) {
-            result.changeSet = changeSet;
-            result.changeSetReview = await changeSetService.review(task.projectId, changeSet);
-          }
+          if (changeSet && task.projectId) { result.changeSet = changeSet; result.changeSetReview = await changeSetService.review(task.projectId, changeSet); }
         }
       }
       return result;
@@ -307,88 +285,40 @@ export function createRuntimeServer(version: string, options: RuntimeServerOptio
       if (!started) throw new Error('Runtime is not started');
       if (!repairCoordinator) throw new Error('Repair agent is not configured');
       if (!taskService.get(taskId)) throw new Error(`Unknown task: ${taskId}`);
-
       repairCoordinator.start(taskId);
       const decision = await repairCoordinator.onVerificationFailureAndPropose(taskId, failure, files);
-      if (decision.kind === 'await_review') {
-        generatedChangeSets.set(decision.changeSet.id, decision.changeSet);
-        await taskService.checkpoint(taskId, { name: 'repair.changeset', data: decision.changeSet });
-      }
+      if (decision.kind === 'await_review') { generatedChangeSets.set(decision.changeSet.id, decision.changeSet); await taskService.checkpoint(taskId, { name: 'repair.changeset', data: decision.changeSet }); }
       return decision;
     },
     async applyRepair(taskId, changeSetId) {
       if (!started) throw new Error('Runtime is not started');
       if (!options.repairVerifier && !commandRepairVerifier) throw new Error('Repair verifier is not configured');
       if (!repairCoordinator) throw new Error('Repair agent is not configured');
-
       const task = taskService.get(taskId);
       if (!task) throw new Error(`Unknown task: ${taskId}`);
       if (task.repairStatus !== 'review') throw new Error(`Task is not awaiting repair review: ${taskId}`);
-
       const changeSet = generatedChangeSets.get(changeSetId);
       if (!changeSet) throw new Error(`Unknown repair ChangeSet: ${changeSetId}`);
       const checkpoint = task.checkpoint?.data as { id?: unknown } | undefined;
-      if (task.checkpoint?.name !== 'repair.changeset' || checkpoint?.id !== changeSetId) {
-        throw new Error(`Repair ChangeSet is not pending review for task: ${taskId}`);
-      }
+      if (task.checkpoint?.name !== 'repair.changeset' || checkpoint?.id !== changeSetId) throw new Error(`Repair ChangeSet is not pending review for task: ${taskId}`);
       if (!task.projectId) throw new Error(`Task is missing project context: ${taskId}`);
-
       const applied = await changeSetService.apply(task.projectId, changeSet);
       await taskService.checkpoint(taskId, { name: 'repair.applied', data: applied });
-
       let verificationFailure: FailureContext | null;
-      if (options.repairVerifier) {
-        verificationFailure = await options.repairVerifier(taskId, task.projectId, changeSet);
-      } else {
+      if (options.repairVerifier) verificationFailure = await options.repairVerifier(taskId, task.projectId, changeSet);
+      else {
         const project = await projectService.get(task.projectId);
-        if (!project || !commandRepairVerifier || !options.repairVerification) {
-          throw new Error(`Project verification context is unavailable: ${taskId}`);
-        }
-        verificationFailure = await commandRepairVerifier.verify({
-          taskId,
-          projectId: task.projectId,
-          cwd: project.path,
-          command: options.repairVerification.command,
-          checkId: options.repairVerification.checkId ?? 'repair-verification',
-          attempt: Math.min(task.repairAttempts + 1, 3),
-          previousAttempts: task.latestFailure
-            ? [
-                ...task.latestFailure.previousAttempts,
-                {
-                  attempt: task.latestFailure.attempt,
-                  ...(task.latestFailure.changeSetId ? { changeSetId: task.latestFailure.changeSetId } : {}),
-                  status: 'failed',
-                  summary: task.latestFailure.stderrExcerpt || task.latestFailure.stdoutExcerpt,
-                },
-              ]
-            : [],
-          ...(options.repairVerification.affectedPaths
-            ? { affectedPaths: options.repairVerification.affectedPaths }
-            : {}),
-        });
+        if (!project || !commandRepairVerifier || !options.repairVerification) throw new Error(`Project verification context is unavailable: ${taskId}`);
+        verificationFailure = await commandRepairVerifier.verify({ taskId, projectId: task.projectId, cwd: project.path, command: options.repairVerification.command, checkId: options.repairVerification.checkId ?? 'repair-verification', attempt: Math.min(task.repairAttempts + 1, 3), previousAttempts: task.latestFailure ? [...task.latestFailure.previousAttempts, { attempt: task.latestFailure.attempt, ...(task.latestFailure.changeSetId ? { changeSetId: task.latestFailure.changeSetId } : {}), status: 'failed', summary: task.latestFailure.stderrExcerpt || task.latestFailure.stdoutExcerpt }] : [], ...(options.repairVerification.affectedPaths ? { affectedPaths: options.repairVerification.affectedPaths } : {}) });
       }
-      await taskService.checkpoint(taskId, {
-        name: 'repair.verification',
-        data: verificationFailure ?? { ok: true },
-      });
-
+      await taskService.checkpoint(taskId, { name: 'repair.verification', data: verificationFailure ?? { ok: true } });
       if (verificationFailure) {
-        const nextDecision = await repairCoordinator.onVerificationFailureAndPropose(taskId, {
-          ...verificationFailure,
-          attempt: Math.max(task.repairAttempts + 1, verificationFailure.attempt),
-        });
-        if (nextDecision.kind === 'await_review') {
-          generatedChangeSets.set(nextDecision.changeSet.id, nextDecision.changeSet);
-          await taskService.checkpoint(taskId, { name: 'repair.changeset', data: nextDecision.changeSet });
-        }
+        const nextDecision = await repairCoordinator.onVerificationFailureAndPropose(taskId, { ...verificationFailure, attempt: Math.max(task.repairAttempts + 1, verificationFailure.attempt) });
+        if (nextDecision.kind === 'await_review') { generatedChangeSets.set(nextDecision.changeSet.id, nextDecision.changeSet); await taskService.checkpoint(taskId, { name: 'repair.changeset', data: nextDecision.changeSet }); }
         return nextDecision;
       }
-
       return repairCoordinator.onVerificationSuccess(taskId);
     },
-    subscribeTask(listener) {
-      taskListeners.add(listener);
-      return () => taskListeners.delete(listener);
-    },
+    subscribeTask(listener) { taskListeners.add(listener); return () => taskListeners.delete(listener); },
   };
 }
