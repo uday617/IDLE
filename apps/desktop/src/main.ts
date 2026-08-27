@@ -3,29 +3,87 @@ import { join } from 'node:path';
 import type { ChangeSet, TaskStatusEvent, TaskSubmitRequest } from '@idle/contracts';
 import { RuntimeClient } from './main/runtimeClient.js';
 import { SettingsStore, type ProviderSettings } from './main/SettingsStore.js';
+
 let runtimeClient: RuntimeClient | null = null;
 const settingsStore = new SettingsStore();
-const createWindow = () => { const window = new BrowserWindow({ width: 1440, height: 900, minWidth: 1100, minHeight: 700, webPreferences: { preload: join(__dirname, '../preload/preload.cjs'), contextIsolation: true, nodeIntegration: false } }); if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL); else void window.loadFile(join(__dirname, '../renderer/index.html')); };
+
+const REQUIRES_APPROVAL = [
+  /\bgit\s+(push|tag|branch\s+-D|branch\s+--delete)\b/i,
+  /\b(?:npm|pnpm)\s+publish\b/i,
+  /\b(?:npm|pnpm)\s+install\s+.*--global\b/i,
+];
+
+function requiresTerminalApproval(command: string): boolean {
+  return REQUIRES_APPROVAL.some((pattern) => pattern.test(command));
+}
+
+const createWindow = () => {
+  const window = new BrowserWindow({
+    width: 1440,
+    height: 900,
+    minWidth: 1100,
+    minHeight: 700,
+    webPreferences: { preload: join(__dirname, '../preload/preload.cjs'), contextIsolation: true, nodeIntegration: false },
+  });
+  if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL);
+  else void window.loadFile(join(__dirname, '../renderer/index.html'));
+};
+
 app.whenReady().then(async () => {
   const runtimePath = process.env.IDLE_RUNTIME_PATH ?? (app.isPackaged ? join(process.resourcesPath, 'runtime', 'main.js') : join(__dirname, '../../../runtime/dist/main.js'));
   const taskStorePath = process.env.IDLE_TASK_STORE_PATH ?? join(app.getPath('userData'), 'tasks.json');
   const providerSettings = await settingsStore.get();
-  runtimeClient = new RuntimeClient(runtimePath, taskStorePath, providerSettings); runtimeClient.start();
+  runtimeClient = new RuntimeClient(runtimePath, taskStorePath, providerSettings);
+  runtimeClient.start();
+
   ipcMain.handle('settings:get', async () => settingsStore.get());
-  ipcMain.handle('settings:set', async (_event, settings: ProviderSettings) => { const saved = await settingsStore.set(settings); runtimeClient?.restartWith(saved); return saved; });
-  ipcMain.handle('project:open-dialog', async () => { const result = await dialog.showOpenDialog({ title: 'Open Project', properties: ['openDirectory'] }); if (result.canceled || result.filePaths.length === 0) return null; return runtimeClient?.request({ type: 'project.open', path: result.filePaths[0] }) ?? null; });
+  ipcMain.handle('settings:set', async (_event, settings: ProviderSettings) => {
+    const saved = await settingsStore.set(settings);
+    runtimeClient?.restartWith(saved);
+    return saved;
+  });
+  ipcMain.handle('project:open-dialog', async () => {
+    const result = await dialog.showOpenDialog({ title: 'Open Project', properties: ['openDirectory'] });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return runtimeClient?.request({ type: 'project.open', path: result.filePaths[0] }) ?? null;
+  });
   ipcMain.handle('project:files', async (_event, projectId: string, path: string) => runtimeClient?.request({ type: 'file.list', projectId, path }) ?? null);
   ipcMain.handle('project:file-read', async (_event, projectId: string, path: string) => runtimeClient?.request({ type: 'file.read', projectId, path }) ?? null);
   ipcMain.handle('project:file-write', async (_event, projectId: string, path: string, content: string) => runtimeClient?.request({ type: 'file.write', projectId, path, content }) ?? null);
   ipcMain.handle('project:close', async (_event, projectId: string) => runtimeClient?.request({ type: 'project.close', projectId }) ?? null);
   ipcMain.handle('project:git-status', async (_event, projectId: string) => runtimeClient?.gitStatus(projectId) ?? null);
   ipcMain.handle('project:git-diff', async (_event, projectId: string) => runtimeClient?.gitDiff(projectId) ?? null);
-  ipcMain.handle('project:terminal-run', async (_event, projectId: string, command: string) => runtimeClient?.terminalRun(projectId, command) ?? null);
+  ipcMain.handle('project:terminal-run', async (_event, projectId: string, command: string) => {
+    if (requiresTerminalApproval(command)) {
+      const decision = await dialog.showMessageBox({
+        type: 'warning',
+        title: 'Approval required',
+        message: 'This terminal action can affect external state.',
+        detail: command,
+        buttons: ['Cancel', 'Allow once'],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+      if (decision.response !== 1) return null;
+    }
+    return runtimeClient?.terminalRun(projectId, command) ?? null;
+  });
   ipcMain.handle('changeset:review', async (_event, projectId: string, changeSet: ChangeSet) => runtimeClient?.request({ type: 'changeset.review', projectId, changeSet }) ?? null);
   ipcMain.handle('changeset:apply', async (_event, projectId: string, changeSet: ChangeSet) => runtimeClient?.request({ type: 'changeset.apply', projectId, changeSet }) ?? null);
-  ipcMain.handle('task:submit', async (_event, request: TaskSubmitRequest) => { if (!runtimeClient) throw new Error('Agent runtime is not started'); return runtimeClient.submitTask(request); });
-  ipcMain.handle('task:get', async (_event, taskId: string) => { if (!runtimeClient) throw new Error('Agent runtime is not started'); return runtimeClient.getTask(taskId); });
-  runtimeClient?.subscribeTask((event: TaskStatusEvent) => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send('task:status', event); });
-  createWindow(); app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  ipcMain.handle('task:submit', async (_event, request: TaskSubmitRequest) => {
+    if (!runtimeClient) throw new Error('Agent runtime is not started');
+    return runtimeClient.submitTask(request);
+  });
+  ipcMain.handle('task:get', async (_event, taskId: string) => {
+    if (!runtimeClient) throw new Error('Agent runtime is not started');
+    return runtimeClient.getTask(taskId);
+  });
+  runtimeClient.subscribeTask((event: TaskStatusEvent) => {
+    for (const window of BrowserWindow.getAllWindows()) window.webContents.send('task:status', event);
+  });
+  createWindow();
+  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
+
 app.on('window-all-closed', () => { runtimeClient?.stop(); if (process.platform !== 'darwin') app.quit(); });
